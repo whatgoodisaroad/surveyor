@@ -11,20 +11,36 @@ data Survey a where
 data Choice a where
     Option :: String -> a -> Choice a
     OptionPlus :: String -> a -> Survey b -> Choice (a, b)
-    
     (:+:) :: Choice a -> Choice a -> Choice a
     (:*:) :: Choice b -> Choice c -> Choice (Either b c)
 
+-- String option combinator
 
 stringOption :: String -> Choice String
 stringOption text = Option text text
     
+
+-- Example:
+
 simpleSurvey :: Survey (String, String)
 simpleSurvey = 
         FreeResponse "First name"
     :-: FreeResponse "Last name"
 
---mySurvey :: Survey
+mySurvey :: Survey 
+    (
+        (
+            (String, String), 
+            String
+        ), 
+        Either 
+            String 
+            (
+                String, 
+                (String, String)
+            )
+   ) 
+
 mySurvey =
         simpleSurvey
     :-: MultipleChoice "Age group" (
@@ -39,7 +55,7 @@ mySurvey =
             :*: OptionPlus "Government" "Government" govtQuestions
         )
     where
-        --govtQuestions :: Survey
+        govtQuestions :: Survey (String, String)
         govtQuestions =
                 MultipleChoice "Department" (
                         stringOption "Federal"
@@ -47,6 +63,7 @@ mySurvey =
                 )
             :-: FreeResponse "Boss' last name"
 
+-- Lickert question combinator
 
 data LickertScale = 
       StronglyAgree
@@ -66,7 +83,6 @@ lickert prompt = MultipleChoice prompt (
     )
 
 -- Run
-
 
 selected :: Int -> Choice a -> IO a
 selected 0 (Option _ val) = return val
