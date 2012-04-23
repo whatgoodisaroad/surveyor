@@ -7,4 +7,4 @@ DSLs are fun:
 [4] Agree
 [5] Strongly agree
 5
-StronlyAgree
+StronglyAgree
