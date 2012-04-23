@@ -1,12 +1,12 @@
 
 
+-- DSL
 
-
-
+type Prompt = String
 
 data Question = 
-      MultipleChoice String [Choice] 
-    | FreeResponse String
+      MultipleChoice Prompt [Choice] 
+    | FreeResponse Prompt
 
 data Choice = 
       Choice String
@@ -15,22 +15,58 @@ data Choice =
 data Survey =
       Pose Question
     | Survey :-: Survey
+
+type Answer = (Prompt, String)
+
+-- Example
+    
+simpleSurvey :: Survey
+simpleSurvey = 
+        (Pose $ FreeResponse "First name")
+    :-: (Pose $ FreeResponse "Last name")
+    
+    
     
 mySurvey :: Survey
 mySurvey = 
         (Pose $ FreeResponse "First name")
     :-: (Pose $ FreeResponse "Last name")
+    :-: (Pose $ MultipleChoice "Age group" [
+            Choice "< 20",
+            Choice "21 - 40",
+            Choice "41 - 60",
+            Choice "> 60"
+            ]
+        )
     :-: (Pose $ MultipleChoice "Occupation" [
             Choice "Retail",
             Choice "Education",
-            ChoicePlus "Government" $ Pose $ MultipleChoice "Department" [
+            ChoicePlus "Government" govtQuestions
+            ]
+        )
+    where
+        govtQuestions :: Survey
+        govtQuestions = 
+                (Pose $ MultipleChoice "Department" [
                     Choice "Federal",
                     Choice "Municipal"
-                ]
-        ])
+                ])
+            :-: (Pose $ FreeResponse "Boss' last name")
         
-type Answer = (String, String)
+
     
+
+
+
+
+
+
+
+
+
+
+-- Run
+
 surveyCli :: Survey -> IO [Answer]
 surveyCli (Pose q) = do
     ans <- questionToPrompt q
@@ -42,11 +78,11 @@ surveyCli (q1 :-: q2) = do
     
 questionToPrompt :: Question -> IO [Answer]
 questionToPrompt (FreeResponse prompt) = do
-    putStr $ prompt ++ ": "
+    putStr $ "\n" ++ prompt ++ ": "
     ans <- getLine
     return [(prompt, ans)]
 questionToPrompt (MultipleChoice prompt choices) = do
-    putStrLn $ prompt ++ ":"
+    putStrLn $ "\n" ++ prompt ++ ":"
     dispChoices 1 choices
     ans <- readLn :: IO Int
     
@@ -69,4 +105,6 @@ questionToPrompt (MultipleChoice prompt choices) = do
         promptOf :: Choice -> String
         promptOf (Choice p) = p
         promptOf (ChoicePlus p _) = p
-            
+
+
+
