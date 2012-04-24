@@ -1,4 +1,4 @@
-*Main> surveyCli $ lickert "DSLs are fun"
+*Main> surveyCli $ likert "DSLs are fun"
 
 DSLs are fun:
 [1] Strongly disagree
