@@ -6,8 +6,8 @@
 Surveyor is a DSL for describing surveys. It describes...
 
 * what questions are included in a survey, 
-* it describes what answers are possible for the questions, 
-* it describdes the answers provided to the questions by a survey-taker 
+* what answers are possible for the questions, 
+* the answers to the questions made by a survey-taker 
 * and finally it can describe how sections of the survey are conditional on how certain questions 
 are answered.
 

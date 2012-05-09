@@ -1,69 +1,148 @@
 
-{-#LANGUAGE GADTs #-}
+{-#LANGUAGE 
+        GADTs,
+        DeriveDataTypeable
+    #-}
+
+module Surveyor (
+        Prompt,
+        Survey (..),
+        Choice (..),
+
+        freeResponse,
+        stringOption,
+        stringOptionPlus,
+
+        FirstName,
+        LastName,
+        FullName,
+        askName,
+
+        AgeRange,
+        askAgeRange,
+
+        LikertScale (..),
+        likert,
+
+        surveyCli
+    ) where
+
+import qualified Data.Generics
+import Data.Typeable
+import Maybe
 
 type Prompt = String
 
 data Survey a where
-    FreeResponse :: Prompt -> Survey String
-    MultipleChoice :: Prompt -> Choice a -> Survey a
-    (:-:) :: Survey b -> Survey c -> Survey (b, c)
+    Group :: 
+        (Data.Generics.Data a, Data.Generics.Typeable a) => 
+        Prompt -> 
+        Survey a -> 
+        Survey a
+    
+    ParsedResponse :: 
+        (Data.Generics.Data a, Data.Generics.Typeable a) => 
+        Prompt -> 
+        (String -> a) -> 
+        Survey a
+    
+    MultipleChoice :: 
+        (Data.Generics.Data a, Data.Generics.Typeable a) => 
+        Prompt -> 
+        Choice a -> 
+        Survey a
+
+    (:-:) ::
+        Survey b -> 
+        Survey c -> 
+        Survey (b, c)
+
+    Coll :: 
+        (Data.Generics.Data a, Data.Generics.Typeable a) => 
+        [Survey a] -> 
+        Survey [a]
 
 data Choice a where
-    Option :: String -> a -> Choice a
-    OptionPlus :: String -> a -> Survey b -> Choice (a, b)
+    Option :: 
+        (Data.Generics.Data a, Data.Generics.Typeable a) => 
+            String -> a -> Choice a
+
+    OptionPlus :: 
+        (Data.Generics.Data b, Data.Generics.Typeable b) => 
+            String -> b -> Survey c -> Choice (b, c)
+
     (:+:) :: Choice a -> Choice a -> Choice a
     (:*:) :: Choice b -> Choice c -> Choice (Either b c)
 
--- String option combinator
+hasGender :: Survey a -> Bool
+hasGender (Group _ sub) =  hasGender sub
+hasGender (ParsedResponse _ fn) = case (cast' $ fn "") of 
+    Nothing -> False
+    Just _ -> True
+    where
+        cast' :: 
+            (Data.Generics.Data a, Data.Generics.Typeable a) => 
+            a -> 
+            Maybe Gender
+        cast' = cast
+
+hasGender (MultipleChoice _ _) = False
+hasGender (left :-: right) = hasGender left || hasGender right
+hasGender (Coll _) = False
+
+createGenderAccessor :: Survey a -> Maybe (a -> Gender)
+createGenderAccessor s
+    | hasGender s = case s of 
+        (ParsedResponse _ fn) -> Just $ \x -> fromJust $ cast x
+        (Group _ sub) -> createGenderAccessor sub
+        (left :-: right) -> fmap (.fst) $ createGenderAccessor left
+    | otherwise = Nothing
+    
+
+
+
+-- Combinators
+
+freeResponse :: String -> Survey String
+freeResponse text = ParsedResponse text id
 
 stringOption :: String -> Choice String
 stringOption text = Option text text
-    
 
--- Example:
+stringOptionPlus :: String -> Survey a -> Choice (String, a)
+stringOptionPlus text sub = OptionPlus text text sub
 
-simpleSurvey :: Survey (String, String)
-simpleSurvey = 
-        FreeResponse "First name"
-    :-: FreeResponse "Last name"
 
-mySurvey :: Survey 
-    (
-        (
-            (String, String), 
-            String
-        ), 
-        Either 
-            String 
-            (
-                String, 
-                (String, String)
-            )
-   ) 
 
-mySurvey =
-        simpleSurvey
-    :-: MultipleChoice "Age group" (
-                stringOption "< 20" 
-            :+: stringOption "21 - 40"
-            :+: stringOption "41 - 60"
-            :+: stringOption "> 60"
-        )
-    :-: MultipleChoice "Occupation" (
-                stringOption "Retail"
-            :+: stringOption "Education"
-            :*: OptionPlus "Government" "Government" govtQuestions
-        )
-    where
-        govtQuestions :: Survey (String, String)
-        govtQuestions =
-                MultipleChoice "Department" (
-                        stringOption "Federal"
-                    :+: stringOption "Municipal"
-                )
-            :-: FreeResponse "Boss' last name"
+data Gender = Male | Female deriving (Show, Data.Generics.Data, Data.Generics.Typeable)
 
--- Lickert question combinator
+askGender :: Survey Gender
+--askGender = MultipleChoice "Gender" $ Option "Male" Male :+: Option "Female" Female
+askGender = ParsedResponse "Gender" (\r -> if r == "male" then Male else Female)
+
+genderAnswers :: [Gender]
+genderAnswers = [Male, Female, Male, Female, Female, Female, Male, Female]
+
+
+
+type FirstName = String
+type LastName = String
+type FullName = (FirstName, LastName)
+
+askName :: Survey FullName
+askName = 
+        freeResponse "First name"
+    :-: freeResponse "Last name"
+
+type AgeRange = (Int, Int)
+
+askAgeRange :: Survey AgeRange
+askAgeRange = MultipleChoice "Age Group" (
+            Option "< 20"       (0, 20)
+        :+: Option "21 -- 40"   (21, 40)
+        :+: Option "41 -- 60"   (41, 60)
+        :+: Option "> 61"       (61, 200)
+    )
 
 data LikertScale = 
       StronglyAgree
@@ -71,7 +150,7 @@ data LikertScale =
     | NeitherNor
     | Disagree
     | StronglyDisagree
-    deriving (Show)
+    deriving (Show, Data.Generics.Data, Data.Generics.Typeable)
 
 likert :: Prompt -> Survey LikertScale
 likert prompt = MultipleChoice prompt (
@@ -81,6 +160,27 @@ likert prompt = MultipleChoice prompt (
         :+: Option "Agree"                      Agree
         :+: Option "Strongly agree"             StronglyAgree
     )
+
+
+{-queryFromPrompt :: Prompt -> Survey a -> Maybe (a -> Maybe b)
+queryFromPrompt p sur = qfp sur id
+    where
+        qfp :: Survey a -> (a -> c) -> Maybe (a -> b)
+        qfp (Group gp sub) part
+            | gp == p = Just part
+            | otherwise = Nothing
+        qfp (ParsedResponse prp parser) part
+            | prp == p = Just part
+            | otherwise = Nothing
+        qfp (MultipleChoice mcp cs) part
+            | mcp == p = Just part
+            | otherwise = Nothing
+
+        qfp (l :-: r) part = case (qfp l part) of
+            Nothing -> case (qfp r part) of
+                Nothing -> Nothing
+                Just f -> Just $ snd.f
+            Just f -> Just $ fst.f-}
 
 -- Run
 
@@ -107,11 +207,17 @@ choiceLength (l :+: r) = choiceLength l + choiceLength r
 choiceLength (l :*: r) = choiceLength l + choiceLength r
 
 surveyCli :: Survey a -> IO a
+
+surveyCli (Group name sub) = do
+    putStrLn ""
+    putStrLn name
+    putStrLn $ take (length name) $ repeat '='
+    surveyCli sub
  
-surveyCli (FreeResponse prompt) = do
+surveyCli (ParsedResponse prompt parser) = do
     putStr $ "\n" ++ prompt ++ ": "
     ans <- getLine
-    return ans
+    return $ parser ans
 
 surveyCli (MultipleChoice prompt choiceExp) = do
     putStr $ "\n" ++ prompt ++ ": \n"
@@ -138,6 +244,7 @@ surveyCli (left :-: right) = do
     ra <- surveyCli right
     return (la, ra)
 
+surveyCli (Coll ss) = mapM surveyCli ss
 
 
 
