@@ -74,6 +74,20 @@ data Choice a where
     (:+:) :: Choice a -> Choice a -> Choice a
     (:*:) :: Choice b -> Choice c -> Choice (Either b c)
 
+
+
+
+-- SYB Example
+
+data Gender = Male | Female deriving (Eq, Show, Data.Generics.Data, Data.Generics.Typeable)
+
+askGender :: Survey Gender
+--askGender = MultipleChoice "Gender" $ Option "Male" Male :+: Option "Female" Female
+askGender = ParsedResponse "Gender" (\r -> if r == "male" then Male else Female)
+
+genderAnswers :: [Gender]
+genderAnswers = [Male, Female, Male, Female, Female, Female, Male, Female]
+
 hasGender :: Survey a -> Bool
 hasGender (Group _ sub) =  hasGender sub
 hasGender (ParsedResponse _ fn) = case (cast' $ fn "") of 
@@ -98,6 +112,31 @@ createGenderAccessor s
         (left :-: right) -> fmap (.fst) $ createGenderAccessor left
     | otherwise = Nothing
     
+data GenderDemographics = Porportion Float
+instance Show GenderDemographics where
+    show (Porportion f) = show malePercent ++ "% Male, " ++ show femalePercent ++ "% female"
+        where
+            malePercent = f * 100.0
+            femalePercent = (1.0 - f) * 100.0
+
+calcGenderDemographics :: Survey a -> [a] -> Maybe GenderDemographics
+calcGenderDemographics survey answers = do
+    accessor <- createGenderAccessor survey
+    let genders = map accessor answers
+    let males = filter (== Male) genders
+    return $ Porportion $ (fromIntegral $ length males) / (fromIntegral $ length answers)
+
+
+test = calcGenderDemographics (askGender :-: askName) [
+        (Male, ("Wyatt", "Allen")),
+        (Female, ("Margaret", "Allen")),
+        (Male, ("Hugo", "Gernsback")),
+        (Female, ("Ursula", "LeGuin")),
+        (Female, ("Ada", "Lovelace")),
+        (Female, ("Catherine", "The Great"))
+    ]
+
+
 
 
 
@@ -114,14 +153,6 @@ stringOptionPlus text sub = OptionPlus text text sub
 
 
 
-data Gender = Male | Female deriving (Show, Data.Generics.Data, Data.Generics.Typeable)
-
-askGender :: Survey Gender
---askGender = MultipleChoice "Gender" $ Option "Male" Male :+: Option "Female" Female
-askGender = ParsedResponse "Gender" (\r -> if r == "male" then Male else Female)
-
-genderAnswers :: [Gender]
-genderAnswers = [Male, Female, Male, Female, Female, Female, Male, Female]
 
 
 
