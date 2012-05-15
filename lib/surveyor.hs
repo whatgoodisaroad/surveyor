@@ -28,6 +28,7 @@ module Surveyor (
     ) where
 
 import qualified Data.Generics
+import Data.Generics.Aliases
 import Data.Typeable
 import Maybe
 
@@ -79,42 +80,86 @@ data Choice a where
 
 -- SYB Example
 
-data Gender = Male | Female deriving (Eq, Show, Data.Generics.Data, Data.Generics.Typeable)
+data Gender =
+      Male 
+    | Female 
+    deriving (
+        Eq, 
+        Show, 
+        Data.Generics.Data, 
+        Data.Generics.Typeable
+    )
+
+cast' :: 
+    (Data.Generics.Data a, Data.Generics.Typeable a) => 
+    a -> 
+    Maybe Gender
+cast' = cast
 
 askGender :: Survey Gender
---askGender = MultipleChoice "Gender" $ Option "Male" Male :+: Option "Female" Female
-askGender = ParsedResponse "Gender" (\r -> if r == "male" then Male else Female)
-
-genderAnswers :: [Gender]
-genderAnswers = [Male, Female, Male, Female, Female, Female, Male, Female]
+askGender = MultipleChoice "Gender" $ Option "Male" Male :+: Option "Female" Female
+--askGender = ParsedResponse "Gender" $ \r -> if r == "male" then Male else Female
 
 hasGender :: Survey a -> Bool
 hasGender (Group _ sub) =  hasGender sub
 hasGender (ParsedResponse _ fn) = case (cast' $ fn "") of 
     Nothing -> False
     Just _ -> True
-    where
-        cast' :: 
-            (Data.Generics.Data a, Data.Generics.Typeable a) => 
-            a -> 
-            Maybe Gender
-        cast' = cast
 
-hasGender (MultipleChoice _ _) = False
+hasGender (MultipleChoice _ c) = choiceHasGender c
 hasGender (left :-: right) = hasGender left || hasGender right
 hasGender (Coll _) = False
 
-createGenderAccessor :: Survey a -> Maybe (a -> Gender)
+choiceHasGender :: Choice a -> Bool
+choiceHasGender (Option _ a) = case (cast' a) of
+    Nothing -> False
+    Just _ -> True
+choiceHasGender (OptionPlus _ a s) = case (cast' a) of
+    Nothing -> hasGender s
+    Just _ -> True
+choiceHasGender (left :+: right) = choiceHasGender left
+choiceHasGender (left :*: right) = choiceHasGender left || choiceHasGender right
+
+createGenderAccessor :: Survey a -> Maybe (a -> Maybe Gender)
 createGenderAccessor s
     | hasGender s = case s of 
-        (ParsedResponse _ fn) -> Just $ \x -> fromJust $ cast x
+        (ParsedResponse _ fn) -> Just cast
+        (MultipleChoice _ c) -> createGenderChoiceAccessor c
+
         (Group _ sub) -> createGenderAccessor sub
-        (left :-: right) -> fmap (.fst) $ createGenderAccessor left
+        (left :-: right) -> fromJoin s
     | otherwise = Nothing
-    
+    where
+        fromJoin :: Survey (b, c) -> Maybe ((b, c) -> Maybe Gender)
+        fromJoin (left :-: right) = orElse
+            (fmap (.fst) $ createGenderAccessor left) 
+            (fmap (.snd) $ createGenderAccessor right)
+
+createGenderChoiceAccessor :: Choice a -> Maybe (a -> Maybe Gender)
+createGenderChoiceAccessor c
+    | choiceHasGender c = case c of
+        (Option _ a) -> Just $ cast'
+        (OptionPlus _ _ _) -> fromPlus c
+        (left :+: right) -> createGenderChoiceAccessor left
+        (left :*: right) -> fromJoin c
+    | otherwise = Nothing
+    where
+        fromJoin :: Choice (Either b c) -> Maybe ((Either b c) -> Maybe Gender)
+        fromJoin (left :*: right) = Nothing -- TODO
+
+
+        fromPlus :: Choice (b, c) -> Maybe ((b, c) -> Maybe Gender)
+        fromPlus (OptionPlus _ a s) = case (cast' a) of 
+            Nothing -> fmap (.snd) $ createGenderAccessor s
+            Just _ -> fmap (.fst) $ Just cast'
+
 data GenderDemographics = Porportion Float
 instance Show GenderDemographics where
-    show (Porportion f) = show malePercent ++ "% Male, " ++ show femalePercent ++ "% female"
+    show (Porportion f) = 
+            show malePercent 
+        ++ "% Male, " 
+        ++ show femalePercent 
+        ++ "% female"
         where
             malePercent = f * 100.0
             femalePercent = (1.0 - f) * 100.0
@@ -123,11 +168,12 @@ calcGenderDemographics :: Survey a -> [a] -> Maybe GenderDemographics
 calcGenderDemographics survey answers = do
     accessor <- createGenderAccessor survey
     let genders = map accessor answers
-    let males = filter (== Male) genders
+    let success = filter (/= Nothing) genders
+    let males = filter (== Just Male) success
     return $ Porportion $ (fromIntegral $ length males) / (fromIntegral $ length answers)
 
 
-test = calcGenderDemographics (askGender :-: askName) [
+test1 = calcGenderDemographics (askGender :-: askName) [
         (Male, ("Wyatt", "Allen")),
         (Female, ("Margaret", "Allen")),
         (Male, ("Hugo", "Gernsback")),
@@ -136,6 +182,14 @@ test = calcGenderDemographics (askGender :-: askName) [
         (Female, ("Catherine", "The Great"))
     ]
 
+test2 = calcGenderDemographics (askName :-: askGender) [
+        (("Wyatt", "Allen"),            Male),
+        (("Margaret", "Allen"),         Female),
+        (("Hugo", "Gernsback"),         Male),
+        (("Ursula", "LeGuin"),          Female),
+        (("Ada", "Lovelace"),           Female),
+        (("Catherine", "The Great"),    Female)
+    ]
 
 
 
