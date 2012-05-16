@@ -27,10 +27,14 @@ module Surveyor (
         surveyCli
     ) where
 
+import Maybe
+import Control.Applicative
+
 import qualified Data.Generics
 import Data.Generics.Aliases
 import Data.Typeable
-import Maybe
+
+
 
 type Prompt = String
 
@@ -141,12 +145,30 @@ createGenderChoiceAccessor c
         (Option _ a) -> Just $ cast'
         (OptionPlus _ _ _) -> fromPlus c
         (left :+: right) -> createGenderChoiceAccessor left
-        (left :*: right) -> fromJoin c
+        (left :*: right) -> Just $ fromJoin c
     | otherwise = Nothing
     where
-        fromJoin :: Choice (Either b c) -> Maybe ((Either b c) -> Maybe Gender)
-        fromJoin (left :*: right) = Nothing -- TODO
+        fromJoin :: Choice (Either b c) -> (Either b c) -> Maybe Gender
+        fromJoin (left :*: right) val
+            | leftHas && rightHas = case val of 
+                Left x -> lacc x
+                Right x -> racc x
+            | leftHas = maybeLeft val >>= lacc
+            | rightHas = maybeRight val >>= racc
+            where
+                leftHas = choiceHasGender left
+                rightHas = choiceHasGender right
 
+                lacc = fromJust $ createGenderChoiceAccessor left
+                racc = fromJust $ createGenderChoiceAccessor right
+
+        maybeLeft :: Either a b -> Maybe a
+        maybeLeft (Left a) = Just a
+        maybeLeft _ = Nothing
+
+        maybeRight :: Either a b -> Maybe b
+        maybeRight (Right b) = Just b
+        maybeRight _ = Nothing
 
         fromPlus :: Choice (b, c) -> Maybe ((b, c) -> Maybe Gender)
         fromPlus (OptionPlus _ a s) = case (cast' a) of 
