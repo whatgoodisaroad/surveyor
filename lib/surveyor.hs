@@ -40,19 +40,22 @@ type Prompt = String
 
 data Survey a where
     Group :: 
-        (Data.Generics.Data a, Data.Generics.Typeable a) => 
+        (Data.Generics.Data a, 
+            Data.Generics.Typeable a) => 
         Prompt -> 
         Survey a -> 
         Survey a
     
     ParsedResponse :: 
-        (Data.Generics.Data a, Data.Generics.Typeable a) => 
+        (Data.Generics.Data a, 
+            Data.Generics.Typeable a) => 
         Prompt -> 
         (String -> a) -> 
         Survey a
     
     MultipleChoice :: 
-        (Data.Generics.Data a, Data.Generics.Typeable a) => 
+        (Data.Generics.Data a, 
+            Data.Generics.Typeable a) => 
         Prompt -> 
         Choice a -> 
         Survey a
@@ -63,26 +66,148 @@ data Survey a where
         Survey (b, c)
 
     Coll :: 
-        (Data.Generics.Data a, Data.Generics.Typeable a) => 
+        (Data.Generics.Data a, 
+            Data.Generics.Typeable a) => 
         [Survey a] -> 
         Survey [a]
 
 data Choice a where
     Option :: 
-        (Data.Generics.Data a, Data.Generics.Typeable a) => 
-            String -> a -> Choice a
+        (Data.Generics.Data a, 
+            Data.Generics.Typeable a) => 
+        String -> 
+        a -> 
+        Choice a
 
     OptionPlus :: 
-        (Data.Generics.Data b, Data.Generics.Typeable b) => 
-            String -> b -> Survey c -> Choice (b, c)
+        (Data.Generics.Data b, 
+            Data.Generics.Typeable b) => 
+        String -> 
+        b -> 
+        Survey c -> 
+        Choice (b, c)
 
-    (:+:) :: Choice a -> Choice a -> Choice a
-    (:*:) :: Choice b -> Choice c -> Choice (Either b c)
+    (:+:) :: 
+        Choice a -> 
+        Choice a -> 
+        Choice a
+
+    (:*:) :: 
+        Choice b -> 
+        Choice c -> 
+        Choice (Either b c)
 
 
 
 
--- SYB Example
+
+
+
+
+
+
+
+
+-- Helpers
+
+maybeLeft :: Either a b -> Maybe a
+maybeLeft (Left a) = Just a
+maybeLeft _ = Nothing
+
+maybeRight :: Either a b -> Maybe b
+maybeRight (Right b) = Just b
+maybeRight _ = Nothing
+
+
+
+
+
+
+-- Generic analysis
+
+cast'' :: 
+    (Data.Generics.Typeable a,
+        Data.Generics.Typeable b) => 
+    b ->
+    a -> 
+    Maybe b
+cast'' b = cast
+
+surveyContains :: 
+    Data.Generics.Typeable b => 
+    Survey a -> 
+    b -> 
+    Bool
+surveyContains (ParsedResponse _ fn) b = isJust $ cast'' b $ fn ""
+surveyContains (MultipleChoice _ c) b = c `choiceContains` b
+surveyContains (Group _ sub) b = sub `surveyContains` b
+surveyContains (left :-: right) b = left `surveyContains` b || right `surveyContains` b
+
+choiceContains :: 
+    Data.Generics.Typeable b => 
+    Choice a ->
+    b -> 
+    Bool
+choiceContains (Option _ a) b = isJust $ cast'' b a
+choiceContains (OptionPlus _ a s) b = (isJust $ cast'' b a) || s `surveyContains` b
+choiceContains (left :+: right) b = left `choiceContains` b
+choiceContains (left :*: right) b = left `choiceContains` b || right `choiceContains` b
+
+genericAccessor :: 
+    Data.Generics.Typeable b => 
+    Survey a -> 
+    b -> 
+    Maybe (a -> Maybe b)
+genericAccessor s b
+    | s `surveyContains` b = case s of 
+        (ParsedResponse _ _) -> Just cast
+        (MultipleChoice _ c) -> c `genericChoiceAccessor` b
+        (Group _ sub) -> sub `genericAccessor` b
+        (left :-: right) -> orElse
+            (fmap (.fst) $ left `genericAccessor` b) 
+            (fmap (.snd) $ right `genericAccessor` b)
+    | otherwise = Nothing
+
+genericChoiceAccessor :: 
+    Data.Generics.Typeable b =>
+    Choice a ->
+    b ->
+    Maybe (a -> Maybe b)
+genericChoiceAccessor c b
+    | c `choiceContains` b = case c of
+        (Option _ a) -> Just cast
+        (OptionPlus _ a s) -> case (cast'' b a) of 
+            Just _ -> fmap (.fst) $ Just cast
+            Nothing -> fmap (.snd) $ s `genericAccessor` b
+        (left :+: right) -> left `genericChoiceAccessor` b
+        (left :*: right) -> Just $ fromJoin c b
+    | otherwise = Nothing
+    where
+        fromJoin :: 
+            Data.Generics.Typeable b =>
+            Choice (Either c d) -> 
+            b ->
+            (Either c d) -> 
+            Maybe b
+        fromJoin (left :*: right) b val
+            | leftHas && rightHas = case val of 
+                Left x -> lacc x
+                Right x -> racc x
+            | leftHas = maybeLeft val >>= lacc
+            | rightHas = maybeRight val >>= racc
+            where
+                leftHas = left `choiceContains` b
+                rightHas = right `choiceContains` b
+
+                lacc = fromJust $ left `genericChoiceAccessor` b
+                racc = fromJust $ right `genericChoiceAccessor` b
+
+        
+
+
+
+
+-- Specialize generic analysis code to the Gender type:
 
 data Gender =
       Male 
@@ -94,86 +219,15 @@ data Gender =
         Data.Generics.Typeable
     )
 
-cast' :: 
-    (Data.Generics.Data a, Data.Generics.Typeable a) => 
-    a -> 
-    Maybe Gender
-cast' = cast
-
 askGender :: Survey Gender
 askGender = MultipleChoice "Gender" $ Option "Male" Male :+: Option "Female" Female
---askGender = ParsedResponse "Gender" $ \r -> if r == "male" then Male else Female
+--askGender = ParsedResponse "Gender" $ \r -> if r == "Male" then Male else Female
 
 hasGender :: Survey a -> Bool
-hasGender (Group _ sub) =  hasGender sub
-hasGender (ParsedResponse _ fn) = case (cast' $ fn "") of 
-    Nothing -> False
-    Just _ -> True
-
-hasGender (MultipleChoice _ c) = choiceHasGender c
-hasGender (left :-: right) = hasGender left || hasGender right
-hasGender (Coll _) = False
-
-choiceHasGender :: Choice a -> Bool
-choiceHasGender (Option _ a) = case (cast' a) of
-    Nothing -> False
-    Just _ -> True
-choiceHasGender (OptionPlus _ a s) = case (cast' a) of
-    Nothing -> hasGender s
-    Just _ -> True
-choiceHasGender (left :+: right) = choiceHasGender left
-choiceHasGender (left :*: right) = choiceHasGender left || choiceHasGender right
+hasGender = (flip surveyContains) Male
 
 createGenderAccessor :: Survey a -> Maybe (a -> Maybe Gender)
-createGenderAccessor s
-    | hasGender s = case s of 
-        (ParsedResponse _ fn) -> Just cast
-        (MultipleChoice _ c) -> createGenderChoiceAccessor c
-
-        (Group _ sub) -> createGenderAccessor sub
-        (left :-: right) -> fromJoin s
-    | otherwise = Nothing
-    where
-        fromJoin :: Survey (b, c) -> Maybe ((b, c) -> Maybe Gender)
-        fromJoin (left :-: right) = orElse
-            (fmap (.fst) $ createGenderAccessor left) 
-            (fmap (.snd) $ createGenderAccessor right)
-
-createGenderChoiceAccessor :: Choice a -> Maybe (a -> Maybe Gender)
-createGenderChoiceAccessor c
-    | choiceHasGender c = case c of
-        (Option _ a) -> Just $ cast'
-        (OptionPlus _ _ _) -> fromPlus c
-        (left :+: right) -> createGenderChoiceAccessor left
-        (left :*: right) -> Just $ fromJoin c
-    | otherwise = Nothing
-    where
-        fromJoin :: Choice (Either b c) -> (Either b c) -> Maybe Gender
-        fromJoin (left :*: right) val
-            | leftHas && rightHas = case val of 
-                Left x -> lacc x
-                Right x -> racc x
-            | leftHas = maybeLeft val >>= lacc
-            | rightHas = maybeRight val >>= racc
-            where
-                leftHas = choiceHasGender left
-                rightHas = choiceHasGender right
-
-                lacc = fromJust $ createGenderChoiceAccessor left
-                racc = fromJust $ createGenderChoiceAccessor right
-
-        maybeLeft :: Either a b -> Maybe a
-        maybeLeft (Left a) = Just a
-        maybeLeft _ = Nothing
-
-        maybeRight :: Either a b -> Maybe b
-        maybeRight (Right b) = Just b
-        maybeRight _ = Nothing
-
-        fromPlus :: Choice (b, c) -> Maybe ((b, c) -> Maybe Gender)
-        fromPlus (OptionPlus _ a s) = case (cast' a) of 
-            Nothing -> fmap (.snd) $ createGenderAccessor s
-            Just _ -> fmap (.fst) $ Just cast'
+createGenderAccessor = (flip genericAccessor) Male
 
 data GenderDemographics = Porportion Float
 instance Show GenderDemographics where
@@ -212,6 +266,17 @@ test2 = calcGenderDemographics (askName :-: askGender) [
         (("Ada", "Lovelace"),           Female),
         (("Catherine", "The Great"),    Female)
     ]
+
+
+
+
+
+
+
+
+
+
+
 
 
 
