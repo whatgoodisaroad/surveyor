@@ -1,2 +1,4 @@
 *.hi
 *.o
+*.DS_STORE
+docs/abstract.txt
