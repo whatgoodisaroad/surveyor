@@ -6,11 +6,11 @@ import Maybe
 
 -- Example for tabulation
 
-createGenderAccessor :: Survey a -> Maybe (a -> Maybe Gender)
-createGenderAccessor = (flip genericAccessor) Male
+createGenderAccessor :: Survey a -> a -> Maybe Gender
+createGenderAccessor = genericAccessor
 
-createHandednessAccessor :: Survey a -> Maybe (a -> Maybe Handedness)
-createHandednessAccessor = (flip genericAccessor) LeftHanded
+createHandednessAccessor :: Survey a -> a -> Maybe Handedness
+createHandednessAccessor = genericAccessor
 
 
 type TabSurveyType = ((FullName, Gender), Handedness)
@@ -28,9 +28,9 @@ tabAnswers = [
     ]
 
 tabGenderDist :: Distribution TabSurveyType Gender
-tabGenderDist = collate (fromJust $ createGenderAccessor tabSurvey) tabAnswers
+tabGenderDist = collate (createGenderAccessor tabSurvey) tabAnswers
 
 tabulation :: Table
-tabulation = crossTab (fromJust $ createHandednessAccessor tabSurvey) tabGenderDist
+tabulation = crossTab (createHandednessAccessor tabSurvey) tabGenderDist
 
 main = print tabulation

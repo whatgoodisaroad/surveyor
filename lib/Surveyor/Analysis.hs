@@ -6,7 +6,6 @@
 {-#LANGUAGE GADTs #-}
 
 module Surveyor.Analysis (
-		surveyContains, 
 		genericAccessor,
 
         collate,
@@ -20,103 +19,36 @@ import Surveyor
 
 import Maybe
 import Data.List
-import Data.Generics
-
--- A version of cast where a value of the target type can be passed, but isn't used.
-cast' :: 
-    (Typeable a, Typeable b) => 
-    b ->
-    a -> 
-    Maybe b
-cast' b = cast
-
--- Returns whether an answer to the survey contains or could contain the target type.
-surveyContains :: 
-    Data.Generics.Typeable b => 
-    Survey a -> 
-    b -> 
-    Bool
-surveyContains (ParsedResponse _ fn) b = isJust $ cast' b $ fn ""
-surveyContains (MultipleChoice _ c) b = c `choiceContains` b
-surveyContains (Group _ sub) b = sub `surveyContains` b
-surveyContains (left :-: right) b = left `surveyContains` b || right `surveyContains` b
-
--- Returns whether an answer to the multiple choice question could be of the target type.
-choiceContains :: 
-    Data.Generics.Typeable b => 
-    Choice a ->
-    b -> 
-    Bool
-choiceContains (Option _ a) b = isJust $ cast' b a
-choiceContains (OptionPlus _ a s) b = (isJust $ cast' b a) || s `surveyContains` b
-choiceContains (left :+: right) b = left `choiceContains` b
-choiceContains (left :*: right) b = left `choiceContains` b || right `choiceContains` b
+import Data.Generics hiding ((:*:))
 
 -- Generically creates a query for the target value from the given survey.
--- The result is a maybe wrapped in a function which returns a maybe.
--- The first maybe is because the survey might not involve the target type at all,
--- and thus, no accessor could be given.
--- The inner maybe is because the answer may be formed in such a way that the target 
+-- The result is a function which returns a maybe.
+-- The maybe is because the survey might not involve the target type at all,
+-- or because the answer may be formed in such a way that the target 
 -- type would not be present, for example if the type would only be present in the
 -- untaken branch of an Either construction.
-genericAccessor :: 
-    Data.Generics.Typeable b => 
-    Survey a -> 
-    b -> 
-    Maybe (a -> Maybe b)
-genericAccessor s b
-    | s `surveyContains` b = case s of 
-        (ParsedResponse _ _) -> Just cast
-        (MultipleChoice _ c) -> c `genericChoiceAccessor` b
-        (Group _ sub) -> sub `genericAccessor` b
-        (left :-: right) -> orElse
-            (fmap (.fst) $ left `genericAccessor` b) 
-            (fmap (.snd) $ right `genericAccessor` b)
-    | otherwise = Nothing
+genericAccessor :: Typeable b => Survey a -> a -> Maybe b
+genericAccessor (ParsedResponse _ _) = cast
+genericAccessor (MultipleChoice _ c) = genericChoiceAccessor c
+genericAccessor (Group _ sub)        = genericAccessor sub
+genericAccessor (left :-: right)     = \a -> orElse (genericAccessor left (fst a)) 
+                                                    (genericAccessor right (snd a))
 
 -- A choice version of the above function on surveys.
-genericChoiceAccessor :: 
-    Data.Generics.Typeable b =>
-    Choice a ->
-    b ->
-    Maybe (a -> Maybe b)
-genericChoiceAccessor c b
-    | c `choiceContains` b = case c of
-        (Option _ a) -> Just cast
-        (OptionPlus _ a s) -> case (cast' b a) of 
-            Just _ -> fmap (.fst) $ Just cast
-            Nothing -> fmap (.snd) $ s `genericAccessor` b
-        (left :+: right) -> left `genericChoiceAccessor` b
-        (left :*: right) -> Just $ fromJoin c b
-    | otherwise = Nothing
-    where
-        fromJoin :: 
-            Data.Generics.Typeable b =>
-            Choice (Either c d) -> 
-            b ->
-            (Either c d) -> 
-            Maybe b
-        fromJoin (left :*: right) b val
-            | leftHas && rightHas = case val of 
-                Left x -> lacc x
-                Right x -> racc x
-            | leftHas = maybeLeft val >>= lacc
-            | rightHas = maybeRight val >>= racc
-            where
-                leftHas = left `choiceContains` b
-                rightHas = right `choiceContains` b
+genericChoiceAccessor :: Typeable b => Choice a -> a -> Maybe b
+genericChoiceAccessor c@(_ :*: _)        = fromJoin c
+genericChoiceAccessor   (l :+: _)        = genericChoiceAccessor l
+genericChoiceAccessor (Option _ a)       = cast
+genericChoiceAccessor (OptionPlus _ a s) = res
+  where 
+    res = case cast a `asTypeOf` res undefined of
+            Just _  -> cast . fst
+            Nothing -> genericAccessor s . snd
 
-                lacc = fromJust $ left `genericChoiceAccessor` b
-                racc = fromJust $ right `genericChoiceAccessor` b
-
-        maybeLeft :: Either a b -> Maybe a
-        maybeLeft (Left a) = Just a
-        maybeLeft _ = Nothing
-
-        maybeRight :: Either a b -> Maybe b
-        maybeRight (Right b) = Just b
-        maybeRight _ = Nothing
-
+fromJoin :: Typeable b => Choice (Either c d) -> Either c d -> Maybe b
+fromJoin (l :*: _) (Left x)  = genericChoiceAccessor l x
+fromJoin (_ :*: r) (Right x) = genericChoiceAccessor r x
+    
 
 -- Distributions
 
