@@ -1,3 +1,7 @@
+--------------------------------------------------------------------------------
+-- Surveyor
+-- Wyatt Allen
+--------------------------------------------------------------------------------
 
 {-#LANGUAGE 
         GADTs,
@@ -5,13 +9,18 @@
     #-}
 
 module Surveyor (
+        
+        -- DSL
         Prompt,
         Survey (..),
         Choice (..),
 
+        -- Combinators
         freeResponse,
         stringOption,
         stringOptionPlus,
+
+        -- Basic types
 
         FirstName,
         LastName,
@@ -32,7 +41,6 @@ module Surveyor (
 
     ) where
 
-import Maybe
 import Data.List
 import Data.Generics
 import Data.Generics.Aliases

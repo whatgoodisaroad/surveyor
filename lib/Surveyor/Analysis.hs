@@ -1,3 +1,8 @@
+--------------------------------------------------------------------------------
+-- Surveyor.Analysis
+-- Wyatt Allen
+--------------------------------------------------------------------------------
+
 {-#LANGUAGE GADTs #-}
 
 module Surveyor.Analysis (
@@ -17,15 +22,15 @@ import Maybe
 import Data.List
 import Data.Generics
 
-
+-- A version of cast where a value of the target type can be passed, but isn't used.
 cast' :: 
-    (Data.Generics.Typeable a,
-        Data.Generics.Typeable b) => 
+    (Typeable a, Typeable b) => 
     b ->
     a -> 
     Maybe b
 cast' b = cast
 
+-- Returns whether an answer to the survey contains or could contain the target type.
 surveyContains :: 
     Data.Generics.Typeable b => 
     Survey a -> 
@@ -36,6 +41,7 @@ surveyContains (MultipleChoice _ c) b = c `choiceContains` b
 surveyContains (Group _ sub) b = sub `surveyContains` b
 surveyContains (left :-: right) b = left `surveyContains` b || right `surveyContains` b
 
+-- Returns whether an answer to the multiple choice question could be of the target type.
 choiceContains :: 
     Data.Generics.Typeable b => 
     Choice a ->
@@ -46,6 +52,13 @@ choiceContains (OptionPlus _ a s) b = (isJust $ cast' b a) || s `surveyContains`
 choiceContains (left :+: right) b = left `choiceContains` b
 choiceContains (left :*: right) b = left `choiceContains` b || right `choiceContains` b
 
+-- Generically creates a query for the target value from the given survey.
+-- The result is a maybe wrapped in a function which returns a maybe.
+-- The first maybe is because the survey might not involve the target type at all,
+-- and thus, no accessor could be given.
+-- The inner maybe is because the answer may be formed in such a way that the target 
+-- type would not be present, for example if the type would only be present in the
+-- untaken branch of an Either construction.
 genericAccessor :: 
     Data.Generics.Typeable b => 
     Survey a -> 
@@ -61,6 +74,7 @@ genericAccessor s b
             (fmap (.snd) $ right `genericAccessor` b)
     | otherwise = Nothing
 
+-- A choice version of the above function on surveys.
 genericChoiceAccessor :: 
     Data.Generics.Typeable b =>
     Choice a ->
@@ -106,8 +120,13 @@ genericChoiceAccessor c b
 
 -- Distributions
 
+-- A distribution finds answers which bear given values.
+-- In the case where the value is not present, for example, if it would
+-- only be in the untaken branch of an Either, the key value can be 
+-- Nothing, which corresponds to what would be printed as "N/A" on a table.
 data Distribution a b = Dist [(Maybe b, [a])]
 
+-- Creates a distribution given an accessor function and a set of answers.
 collate :: 
     Eq b =>
     (a -> Maybe b) ->
@@ -119,6 +138,7 @@ collate acc ans = Dist $ do
     let sub = map snd $ filter (\p -> pivot == fst p) pairs
     return (pivot, sub)
 
+-- An algebraic datatype for tables. Needs revision.
 type CellData = String
 data Table = Table [HeaderCell] [HeaderCell] [Row]
 type HeaderCell = String
@@ -131,6 +151,8 @@ instance Show Table where
             dataRows = map dataRow $ enumFromTo 0 $ pred $ length rows
             dataRow n = concat $ intersperse "," $ (rhs !! n) : (rows !! n)
 
+-- Generate a table for a crosstab analysis of the distribution, given an additional
+-- accessor function for the horizontal axis.
 crossTab :: 
     (Eq b, 
         Show b, 
