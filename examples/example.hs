@@ -8,7 +8,7 @@ basicQuestions =
     :-: MultipleChoice "Occupation" (
                 stringOption "Retail"
             :+: stringOption "Education"
-            :*: OptionPlus "Government" "Government" govtQuestions
+            :*: stringOptionPlus "Government" govtQuestions
         )
     where
         govtQuestions :: Survey (String, String)
@@ -22,17 +22,10 @@ basicQuestions =
 groupedSurvey = Group "My amazing survey" (
             Group "Basic questions" basicQuestions
         :-: Group "Pointed questions" (
-                    {- likert "Life is good"
+                    likert "Life is good"
                 :-: likert "Ignorance is bliss"
                 :-: likert "Free will is an illusion"
-                :-: likert "The Smiths are a valuable contribution to music" -}
-
-                Coll [
-                        likert "Life is good",
-                        likert "Ignorance is bliss",
-                        likert "Free will is an illusion",
-                        likert "The Smiths are a valuable contribution to music"
-                    ]
+                :-: likert "The Smiths made a valuable contribution to music"
             )
     )
 

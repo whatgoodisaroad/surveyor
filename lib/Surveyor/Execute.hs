@@ -73,3 +73,27 @@ surveyCli (left :-: right) = do
 
 surveyCli (Coll ss) = mapM surveyCli ss
 
+
+enclose :: String -> [(String, String)] -> String -> String
+enclose tag attrs "" = "<" ++ tag ++ (renderAttrs attrs) ++  "/>"
+enclose tag attrs content = "<" ++ tag ++ (renderAttrs attrs) ++ ">" ++ content ++ "</" ++ tag ++ ">"
+
+renderAttrs :: [(String, String)] -> String
+renderAttrs [] = ""
+renderAttrs ((n, v):as) = " " ++ n ++ "='" ++ v ++ "'" ++ renderAttrs as
+
+toHtml :: Survey a -> String
+toHtml (Group name sub) = enclose "fieldset" [] $ (enclose "legend" [] name) ++ (toHtml sub)
+toHtml (left :-: right) = toHtml left ++ toHtml right
+toHtml (Coll ss) = concat $ map toHtml ss
+
+toHtml (ParsedResponse prompt _) = enclose "div" [] $ (enclose "label" [] prompt) ++ (enclose "input" [("type", "text")] "")
+toHtml (MultipleChoice prompt choices) = enclose "div" [] $ (enclose "label" [] prompt) ++ (renderChoices choices)
+
+renderChoices :: Choice a -> String
+renderChoices (left :+: right) = renderChoices left ++ renderChoices right
+renderChoices (left :*: right) = renderChoices left ++ renderChoices right
+
+renderChoices (Option p v) = (enclose "input" [("type", "radio"), ("value", "")] "") ++ (enclose "label" [] p)
+renderChoices (OptionPlus p v _) = (enclose "input" [("type", "radio"), ("value", "")] "") ++ (enclose "label" [] p) -- TODO: Handle sub
+

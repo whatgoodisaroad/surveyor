@@ -2,35 +2,84 @@
 import Surveyor
 import Surveyor.Analysis
 
-import Maybe
-
--- Example for tabulation
-
-createGenderAccessor :: Survey a -> a -> Maybe Gender
-createGenderAccessor = genericAccessor
-
-createHandednessAccessor :: Survey a -> a -> Maybe Handedness
-createHandednessAccessor = genericAccessor
+import Data.Maybe
 
 
+
+
+
+
+-- Here's a type used by this example:
 type TabSurveyType = ((FullName, Gender), Handedness)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+-- Here's a survey which produces that type:
 tabSurvey :: Survey TabSurveyType
 tabSurvey = askName :-: askGender :-: askHandedness
 
+
+
+
+
+
+-- These are a set of responses that could have come from the survey:
 tabAnswers :: [TabSurveyType]
 tabAnswers = [
-        ((("Wyatt", "Allen"),           Male),      LeftHanded),
-        ((("Margaret", "Allen"),        Female),    RightHanded),
-        ((("Hugo", "Gernsback"),        Male),      LeftHanded),
-        ((("Ursula", "LeGuin"),         Female),    RightHanded),
-        ((("Ada", "Lovelace"),          Female),    RightHanded),
-        ((("Catherine", "The Great"),   Female),    LeftHanded)
+        ((("Robert", "Heinline"),       Male),      LeftHanded),
+        ((("Timothy", "Zahn"),          Male),      RightHanded),
+        ((("Neal", "Stephenson"),       Male),      RightHanded),
+        ((("Ursula", "LeGuin"),         Female),    LeftHanded),
+        ((("Edith", "Wharton"),         Female),    RightHanded),
+        ((("Virginia", "Woolf"),        Female),    LeftHanded),
+        ((("Cormac", "McCarthy"),       Male),      RightHanded),
+        ((("Michael", "Chricton"),      Male),      RightHanded),
+        ((("James", "Schmitz"),         Male),      LeftHanded)
     ]
 
-tabGenderDist :: Distribution TabSurveyType Gender
-tabGenderDist = collate (createGenderAccessor tabSurvey) tabAnswers
 
-tabulation :: Table
-tabulation = crossTab (createHandednessAccessor tabSurvey) tabGenderDist
+
+
+
+
+
+
+
+-- A distribution over gender.
+tabGenderDist :: Distribution TabSurveyType Gender
+tabGenderDist = collate (genericAccessor tabSurvey) tabAnswers
+
+
+-- A distribution over handedness
+tabHandednessDist :: Distribution TabSurveyType Handedness
+tabHandednessDist = collate (genericAccessor tabSurvey) tabAnswers
+
+
+
+
+-- A crosstab of the distributions:
+tabulation :: Table Gender Handedness
+tabulation = tabGenderDist `crosstab` tabHandednessDist
+
+
+
+
+
+
 
 main = print tabulation
