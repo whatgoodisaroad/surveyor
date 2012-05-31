@@ -7,6 +7,7 @@
 
 module Surveyor.Analysis (
         genericAccessor,
+        nameAccessor,
 
         collate,
         crosstab,
@@ -28,7 +29,7 @@ import Data.Generics --hiding ((:*:))
 -- type would not be present, for example if the type would only be present in the
 -- untaken branch of an Either construction.
 genericAccessor :: Typeable b => Survey a -> a -> Maybe b
-genericAccessor (ParsedResponse _ _) = cast
+genericAccessor (ParsedResponse _ fn) = cast
 genericAccessor (MultipleChoice _ c) = genericChoiceAccessor c
 genericAccessor (Group _ sub)        = genericAccessor sub
 genericAccessor (left :-: right)     = \a -> orElse 
@@ -49,6 +50,16 @@ genericChoiceAccessor (OptionPlus _ a s) = res
 fromJoin :: Typeable b => Choice (Either c d) -> Either c d -> Maybe b
 fromJoin (l :*: _) (Left x)  = genericChoiceAccessor l x
 fromJoin (_ :*: r) (Right x) = genericChoiceAccessor r x
+
+nameAccessor :: Typeable b => Prompt -> Survey a -> a -> Maybe b
+nameAccessor name pr@(ParsedResponse p fn) = if p == name then genericAccessor pr else const Nothing
+nameAccessor name mc@(MultipleChoice p c) = if p == name then genericAccessor mc else const Nothing
+nameAccessor name gp@(Group p sub) = if p == name then genericAccessor gp else const Nothing
+nameAccessor name (left :-: right) = \a -> orElse
+    (nameAccessor name left $ fst a)
+    (nameAccessor name right $ snd a)
+
+
 
 -- Distributions
 

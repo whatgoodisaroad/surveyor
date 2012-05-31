@@ -51,15 +51,15 @@ import Data.Typeable
 type Prompt = String
 
 data Survey a where
-    Group :: (Data a, Typeable a) => Prompt -> Survey a -> Survey a
-    ParsedResponse :: (Data a, Typeable a) => Prompt -> (String -> a) -> Survey a
-    MultipleChoice :: (Data a, Typeable a) => Prompt -> Choice a -> Survey a
+    Group :: Typeable a => Prompt -> Survey a -> Survey a
+    ParsedResponse :: Typeable a => Prompt -> (String -> a) -> Survey a
+    MultipleChoice :: Typeable a => Prompt -> Choice a -> Survey a
     (:-:) :: Survey b -> Survey c -> Survey (b, c)
-    Coll :: (Data a, Typeable a) => [Survey a] -> Survey [a]
+    Coll :: Typeable a => [Survey a] -> Survey [a]
 
 data Choice a where
-    Option :: (Data a, Typeable a) => String -> a -> Choice a
-    OptionPlus :: (Data b, Typeable b) => String -> b -> Survey c -> Choice (b, c)
+    Option :: Typeable a => String -> a -> Choice a
+    OptionPlus :: Typeable b => String -> b -> Survey c -> Choice (b, c)
     (:+:) :: Choice a -> Choice a -> Choice a
     (:*:) :: Choice b -> Choice c -> Choice (Either b c)
 
@@ -74,6 +74,13 @@ stringOption text = Option text text
 stringOptionPlus :: String -> Survey a -> Choice (String, a)
 stringOptionPlus text sub = OptionPlus text text sub
 
+
+showOption :: (Show a, Typeable a) => a -> Choice a
+showOption a = Option (show a) a
+
+showOptionPlus :: (Show b, Typeable b) => b -> Survey c -> Choice (b, c)
+showOptionPlus a sub = OptionPlus (show a) a sub
+
 -- Basic types
 
 type FirstName = String
@@ -85,20 +92,13 @@ askName =
         freeResponse "First name"
     :-: freeResponse "Last name"
 
-data Gender =
-      Male 
-    | Female 
-    deriving (
-        Eq, 
-        Show, 
-        Data.Generics.Data, 
-        Data.Generics.Typeable
-    )
+data Gender = Male | Female 
+    deriving (Eq, Show, Typeable)
 
 askGender :: Survey Gender
 askGender = MultipleChoice "Gender" $ 
-        Option "Male" Male 
-    :+: Option "Female" Female
+        showOption Male 
+    :+: showOption Female
 
 type AgeRange = (Int, Int)
 
@@ -115,28 +115,29 @@ data LikertScale =
     | NeitherNor
     | Disagree
     | StronglyDisagree
-    deriving (
-            Eq,
-            Show, 
-            Data.Generics.Data, 
-            Data.Generics.Typeable
-        )
+    deriving (Eq, Typeable)
+
+instance Show LikertScale where
+    show StronglyDisagree = "Strongly disagree"
+    show Disagree = "Disagree"
+    show NeitherNor = "Neither agree nor disagree"
+    show Agree = "Agree"
+    show StronglyAgree = "Strongly agree"
 
 likert :: Prompt -> Survey LikertScale
 likert prompt = MultipleChoice prompt $
-        Option "Strongly disagree"          StronglyDisagree
-    :+: Option "Disagree"                   Disagree
-    :+: Option "Neither agree nor disagree" NeitherNor
-    :+: Option "Agree"                      Agree
-    :+: Option "Strongly agree"             StronglyAgree
+        showOption StronglyDisagree
+    :+: showOption Disagree
+    :+: showOption NeitherNor
+    :+: showOption Agree
+    :+: showOption StronglyAgree
 
 data Handedness = 
       LeftHanded 
     | RightHanded
     deriving (
             Eq,
-            Data.Generics.Data,
-            Data.Generics.Typeable
+            Typeable
         )
 
 instance Show Handedness where
@@ -145,8 +146,8 @@ instance Show Handedness where
 
 askHandedness :: Survey Handedness
 askHandedness = MultipleChoice "Handedness" $ 
-        Option "Left handed" LeftHanded 
-    :+: Option "Right handed" RightHanded
+        showOption LeftHanded 
+    :+: showOption RightHanded
 
 
 
