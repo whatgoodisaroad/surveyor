@@ -30,6 +30,8 @@ import Surveyor
 import qualified Surveyor.Execute
 import Surveyor.Analysis
 
+-- Some static text.
+
 frontMatter, backMatter, sub, css :: String
 frontMatter = "<html><head><title>Surveyor</title><style>" ++ css ++"</style></head><body><form action='/ans' method='get'>"
 backMatter = "</form></body></html>\n"
@@ -44,13 +46,15 @@ css = "\
     \    margin:4em auto;\
     \    background:#fff;\
     \    padding:2em;\
+    \    border:1px solid #111;\
+    \    -webkit-border-radius: 4px;\
+    \    border-radius: 4px;\
     \}\
     \.respond-label { display:inline-block; width:120px; }\
     \div.q { margin:1em 0; }\
     \input[type=text] { width:400px; }\
     \.choices { padding:0.5em 2em; }\
     \#sub{ text-align:right; padding:0.5em 0; }\
-    \input[type=submit] { font-size:40pt; }\
     \pre {\
     \    background:#666;\
     \    color:#ddd;\
@@ -63,17 +67,18 @@ css = "\
     \    font-size:8pt;\
     \}"
 
-doc :: String -> Html
-doc s = Html $ return $ HtmlString $ frontMatter ++ s ++ backMatter
+-- Enclose text in a document and lift as HTML, with or without a submit button.
 
-subdoc :: String -> Html
+doc, subdoc :: String -> Html
+doc s = Html $ return $ HtmlString $ frontMatter ++ s ++ backMatter
 subdoc s = doc $ s ++ sub
+
+-- Given a survey, create a webserver.
 
 runServer :: Show a => Survey a -> IO [a]
 runServer survey = server >> return []
     where
-        surveyHtml = subdoc $ toHtml "" survey
-
+        surveyHtml = subdoc $ toHtml "-" survey
         server = simpleHTTP nullConf $ msum [ 
                 dir "ans" $ handleAnswer survey,
                 ok surveyHtml 
@@ -81,15 +86,10 @@ runServer survey = server >> return []
 
 handleAnswer :: Show a => Survey a -> ServerPart Html
 handleAnswer survey = do
-    ans <- decodeSurvey "" survey
+    ans <- decodeSurvey "-" survey
     let name = "Anonymous" `fromMaybe` (("First name" `searchingFor` survey) ans)
     let html = (enclose "h1" [] "Submitted") ++ (enclose "h2" [] $ "Thanks, " ++ name ++ "!") ++ (enclose "pre" [] $ show ans) ++ (enclose "a" [("href", "/")] "Again")
     ok $ doc html
-
-
-
-
---                            ++  
 
 decodeSurvey :: Path -> Survey a -> ServerPart a
 decodeSurvey path (left :+: right) = do
@@ -103,9 +103,6 @@ decodeSurvey path (Respond _ p) = do
 decodeSurvey path (Choose prompt choices) = do
     idx <- (read :: String -> Int) <$> look path
     return $ selected idx choices
-
-
-
 
 enclose :: String -> [(String, String)] -> String -> String
 enclose tag attrs "" = "<" ++ tag ++ (renderAttrs attrs) ++  "/>"
