@@ -6,21 +6,25 @@
 {-#LANGUAGE GADTs #-}
 
 module Surveyor.Analysis (
-        genericAccessor,
-        nameAccessor,
+        scan,
+        guidedBy,
+        searchingFor,
 
         collate,
         crosstab,
 
-        Distribution (..),
+        Dist (..),
         Table (..)
-	) where
+    ) where
 
 import Surveyor
 
 import Data.Maybe
 import Data.List
-import Data.Generics --hiding ((:*:))
+import Data.Generics
+
+scan :: (a -> Maybe b) -> [a] -> [b]
+scan f = catMaybes . map f
 
 -- Generically creates a query for the target value from the given survey.
 -- The result is a function which returns a maybe.
@@ -28,38 +32,34 @@ import Data.Generics --hiding ((:*:))
 -- or because the answer may be formed in such a way that the target 
 -- type would not be present, for example if the type would only be present in the
 -- untaken branch of an Either construction.
-genericAccessor :: Typeable b => Survey a -> a -> Maybe b
-genericAccessor (ParsedResponse _ fn) = cast
-genericAccessor (MultipleChoice _ c) = genericChoiceAccessor c
-genericAccessor (Group _ sub)        = genericAccessor sub
-genericAccessor (left :-: right)     = \a -> orElse 
-    (genericAccessor left $ fst a) 
-    (genericAccessor right $ snd a)
+guidedBy :: Typeable b => Survey a -> a -> Maybe b
+guidedBy (Respond _ fn) = cast
+guidedBy (Choose _ c) = choiceGuidedBy c
+guidedBy (Group _ sub)        = guidedBy sub
+guidedBy (left :+: right)     = \a -> orElse 
+    (guidedBy left $ fst a) 
+    (guidedBy right $ snd a)
 
 -- A choice version of the above function on surveys.
-genericChoiceAccessor :: Typeable b => Choice a -> a -> Maybe b
-genericChoiceAccessor c@(_ :*: _)        = fromJoin c
-genericChoiceAccessor   (l :+: _)        = genericChoiceAccessor l
-genericChoiceAccessor (Option _ a)       = cast
-genericChoiceAccessor (OptionPlus _ a s) = res
-    where 
-        res = case cast a `asTypeOf` res undefined of
-            Just _  -> cast . fst
-            Nothing -> genericAccessor s . snd
+choiceGuidedBy :: Typeable b => Choice a -> a -> Maybe b
+choiceGuidedBy   (Item _ a) = cast
+choiceGuidedBy c@(_ :||: _) = fromJoin c
+choiceGuidedBy   (l :|: _ ) = choiceGuidedBy l
+choiceGuidedBy   (c :->: s) = \a -> orElse 
+    (choiceGuidedBy c $ fst a) 
+    (guidedBy s $ snd a)
 
 fromJoin :: Typeable b => Choice (Either c d) -> Either c d -> Maybe b
-fromJoin (l :*: _) (Left x)  = genericChoiceAccessor l x
-fromJoin (_ :*: r) (Right x) = genericChoiceAccessor r x
+fromJoin (l :||: _) (Left x)  = choiceGuidedBy l x
+fromJoin (_ :||: r) (Right x) = choiceGuidedBy r x
 
-nameAccessor :: Typeable b => Prompt -> Survey a -> a -> Maybe b
-nameAccessor name pr@(ParsedResponse p fn) = if p == name then genericAccessor pr else const Nothing
-nameAccessor name mc@(MultipleChoice p c) = if p == name then genericAccessor mc else const Nothing
-nameAccessor name gp@(Group p sub) = if p == name then genericAccessor gp else const Nothing
-nameAccessor name (left :-: right) = \a -> orElse
-    (nameAccessor name left $ fst a)
-    (nameAccessor name right $ snd a)
-
-
+searchingFor :: Typeable b => Prompt -> Survey a -> a -> Maybe b
+searchingFor name pr@(Respond p fn) = if p == name then guidedBy pr else const Nothing
+searchingFor name mc@(Choose p c) = if p == name then guidedBy mc else const Nothing
+searchingFor name gp@(Group p sub) = if p == name then guidedBy gp else searchingFor name sub
+searchingFor name (left :+: right) = \a -> orElse
+    (searchingFor name left $ fst a)
+    (searchingFor name right $ snd a)
 
 -- Distributions
 
@@ -67,9 +67,9 @@ nameAccessor name (left :-: right) = \a -> orElse
 -- In the case where the value is not present, for example, if it would
 -- only be in the untaken branch of an Either, the key value can be 
 -- Nothing, which corresponds to what would be printed as "N/A" on a table.
-data Distribution a b = Dist [(Maybe b, [a])]
+data Dist a b = Dist [(Maybe b, [a])]
 
-instance Show b => Show (Distribution a b) where
+instance Show b => Show (Dist a b) where
     show (Dist ds) = concat $ intersperse "\n" $ map showVal ds
         where
             total :: Float
@@ -91,7 +91,7 @@ collate ::
     Eq b =>
     (a -> Maybe b) ->
     [a] ->
-    Distribution a b
+    Dist a b
 collate acc ans = Dist $ do
     let pairs = map (\a -> (acc a, a)) ans
     pivot <- nub $ map fst pairs
@@ -126,7 +126,7 @@ instance (Show p, Show np) => Show (Table p np) where
                 let header = pad rowColumnWidth $ showMaybe $ rows !! n
                 return $ header ++ (concat $ zipWith pad widths $ map show $ cells !! n)
             
-crosstab :: Eq a => Distribution a b -> Distribution a c -> Table b c
+crosstab :: Eq a => Dist a b -> Dist a c -> Table b c
 crosstab (Dist d1) (Dist d2) = Table (map fst d1) (map fst d2) cells
     where
         cells = do
