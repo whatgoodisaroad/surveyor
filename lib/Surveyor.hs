@@ -34,13 +34,13 @@ module Surveyor (
 
         Name, FullName, fullName,
 
-        Gender, gender,
+        Gender (..), gender,
 
         AgeRange, askAgeRange,
 
-        LikertScale, likert,
+        LikertScale (..), likert,
 
-        Handedness, handedness,
+        Handedness (..), handedness,
 
 
 

@@ -32,7 +32,7 @@ type TabSurveyType = ((FullName, Gender), Handedness)
 
 -- Here's a survey which produces that type:
 tabSurvey :: Survey TabSurveyType
-tabSurvey = askName :-: askGender :-: askHandedness
+tabSurvey = fullName :+: gender :+: handedness
 
 
 
@@ -62,13 +62,13 @@ tabAnswers = [
 
 
 -- A distribution over gender.
-tabGenderDist :: Distribution TabSurveyType Gender
-tabGenderDist = collate (genericAccessor tabSurvey) tabAnswers
+tabGenderDist :: Dist TabSurveyType Gender
+tabGenderDist =  guidedBy tabSurvey `collate` tabAnswers
 
 
 -- A distribution over handedness
-tabHandednessDist :: Distribution TabSurveyType Handedness
-tabHandednessDist = collate (genericAccessor tabSurvey) tabAnswers
+tabHandednessDist :: Dist TabSurveyType Handedness
+tabHandednessDist = guidedBy tabSurvey `collate` tabAnswers
 
 
 

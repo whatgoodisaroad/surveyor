@@ -3,26 +3,21 @@
 
 ## Introduction
 
-Surveyor is a DSL for describing surveys. It describes...
+Surveyor is a DSEL for type-safe, composable surveys in Haskell. Whereas many survey systems are neither compositional nor typed, Survey takes an approach where the type of a survey is defined in terms of how it is composed. Within Surveyor one can do the following:
 
-* what questions are included in a survey, 
-* what answers are possible for the questions, 
-* the answers to the questions made by a survey-taker 
-* and finally it can describe how sections of the survey are conditional on how certain questions 
-are answered.
+* Describe the structure of a survey in terms of headers, questions, choices and sub-surveys.
+* Describe the questions to be included in a survey as free-response questions or multiple-choice questions.
+* Describe the set of options available in a multiple choice question.
+* Determine the type of the questions and the type of their corresponding answers.
+* Design analysis tasks on the answers in terms of the survey they came from.
 
-A DSL is needed here because, although surveys themselves are compositional in structure, current 
-ways of building surveys are not commonly structured in this way. Consequently, surveys cannot be 
-reasoned about in terms of their seperate components. Additionally, survey components are more 
-difficult to reuse.
+A DSL is needed here because, although surveys themselves are, in principle, structurally compositional, current ways of building surveys are not commonly structured in this way. Consequently, surveys cannot be reasoned about in terms of their separate components. Additionally, survey components are more difficult to reuse.
 
-A survey DSL, with semantics for the questions and structure of the survey paired with additional 
-semantics for how these questions were answered by a particular survey-taker, could be synthesized 
-into simple sets of statistical results such as percentages of survey-takers who fit into arbitrary 
-classes of answers.
+A related issue with existing survey systems is that the surveys are not generally strongly-typed in the sense that a survey's structure would indicate the type of answer data. In the case of Surveyor, the well-defined way in which surveys can be composed lends itself to a clear way that surveys can have types and how those types compose.
 
-A Ruby DSEL exists and was published, which takes a different approach. Concepts of this DSL will 
-be borrowed, but its shortcomings will be avoided.
+With strongly-typed surveys, it becomes possible to define analysis tasks in terms of the types, and to provide constructs for designing these analyses within the Surveyor language.
+
+The Ruby DSEL published by Cunningham takes a different approach which is neither compositional nor sternly typed. We, however borrow useful concepts from this language while avoiding its shortcomings.
 
 ## Users
 
@@ -30,34 +25,33 @@ This DSL can be used to generate an survey. It can target different media, for e
 or an on-paper ``fill out the blanks'' style survey. The medium is irrelevant, and beyond the scope
 of the DSL.
 
-The users of this DSL are those who wish to construct a survey to be presented to survey-takers. 
-They will be domain experts in the sense that they are experts in the questions they wish to ask in 
-the survey, but will not need to be experts in programming or in the target medium. For example, 
-the survey writer need not be an expert in HTML in order to target HTML with their Surveyor code.
+Therefore, the users of this DSL are those who wish to construct a survey to be presented to survey-takers. They will be domain experts only in the sense that they are experts in the information they wish to collect through the survey, but will not need to be experts in programming or in the target medium. For example, the survey writer need not be an expert in HTML in order to target HTML with their Surveyor code. These details are abstracted by the execution mechanisms provided by Surveyor.
 
 ## Outcomes
 
-The outcomes of executing the DSL is a survey which can be presented and answered, a set of answers 
-to the survey, and a set of simple statistical results over a body of answer sets. A set of more 
-sophistocated statistical results could be mined from these answers, but that sort of analysis is 
-more related to the domain of machine learning, and is therefore excluded from this work.
+Because Surveyor provides survey tools for building, conducting, answering and analyzing, there are a handful of different outcomes.
+
+* The outcomes of executing a Surveyor expression is a survey in some format, which can be presented and answered. For example, using the `runSurvey` function, the outcome is an interactive command-line interface to be presented in some terminal. On the other hand, using the `runServer` function, the outcome would be a webpage, which can be visited and answered through a web browser over a network.
+* A set of answers is the outcome from the executed survey when attended by a respondent. Because the details of different survey media are abstracted by execution mechanisms, the type of answer resulting from using any of them on the same survey expression is uniform. The outcome of responding to a survey is an Haskell value of a type determined by the survey alone.
+* Statistical results are the outcome of applying Surveyor's analysis constructs to the answer data. These can analyze information over any arbitrary type and seek relationships of variable dimensionality. (Ultimately, the dimensionality of analysis will also be able to be arbitrary.)
 
 ## Use Cases / Scenarios
 
-The simplest survey would have one or more questions. Questions have different types, for example,
-a question may be a choice between 2 or more options, may promt the survey taker for a numeric 
-value, or may be a free-form or constrained text response.
+The simplest survey would have one or more questions. Questions may be choices between 2 or more options (multiple-choice), may prompt the survey taker for a numeric value, or may be a text response.
 
 A more complex use-case involves a survey where certain questions may or may not be presented to 
 the survey taker based on how they've answered questions which were already presented. This can be
 handled through modeling "sub-surveys", or "continuation-surveys" which are surveys on their 
-own. They may be attached as children of choice nodes. This illustrates the main compositional 
-notion for this domain structure, where nondeterministic parts of a survey, are themselves surveys.
+own. They may be attached as children of choice expressions.
 
 A survey-writer may wish to reuse parts of a survey, for example, if a certain set of questions are
 only to be presented to a survey-taker in two answer configurations, he or she will not want to 
 write this question set twice, but should be able to bind this set to a name, and then refer that 
 name twice.
+
+A survey-writer may wish to conduct a survey after having written it. This can be accomplished using a mechanism such as the `runSurvey` or `runServer` functions, depending on the format which the survey writer wishes to target (in these cases, a command-line terminal or webpage, respectively).
+
+Having collected a large number of responses to a survey (via some medium), he or she may wish to make judgements regarding the data or discover relationships between answers. Surveyor allows for 0-dimensional analysis (analysis which does not take any particular type into account) via the list functions already available in Haskell. It allows for 1-dimensional analysis (analysis that takes only one inner data type into account when analyzing answer data) using the `Dist` (distribution) functionality which is provided as part of the language. Finally, it allows for 2-dimensional analysis (cross tabulation of two inner data types) through the composition of distributions. (Ultimately, the surveyor should allow for analysis of arbitrary dimensionality by defining the composition of these distributions, as well as providing dependent tabulations in addition to cross tabulations.)
 
 ## Basic Objects
 
