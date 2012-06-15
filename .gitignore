@@ -3,4 +3,5 @@
 *.DS_STORE
 docs/abstract.txt
 *.exe
+.DS_Store
 docs/paper/

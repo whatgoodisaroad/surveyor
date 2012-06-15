@@ -55,82 +55,109 @@ Having collected a large number of responses to a survey (via some medium), he o
 
 ## Basic Objects
 
-The basic objects in this DSL are questions and answers.
+The overview of basic objects in Surveyor is listed below.
 
-* Surveys, which are made up of questions,
-* Questions, some of which are made up of choices,
-* Choices, which are either simply a string of text, or a string of text with another sub-survey,
-* Answers, which are the product of a question and some value representing how it was answered, and
-* Answer Sets, from which statistical statements can be drawn.
+* `Respond` questions are questions to which a respondent may reply with text. They are defined by the text used as a prompt for the question as well as a parsing function which is able to take the input from a respondent and produce a value of the appropriate type. Consequently, the constructor for this basic object is given by `Respond :: Typeable a => Prompt -> (String->a) -> Survey a`.
+* `Choose` questions are questions to which a respondent must select an answer from a set of choices. They are defined by a prompt to display as well as a choice expression which represents the set of options for the question. The constructor type is given by `Choose :: Typeable a => Prompt -> Choice a -> Survey a`.
+* Choice `Item`s are individual choices that can be used as answers to `Choose` questions. They are defined by a prompt to display as the textual representation of the option, as well as a value of some type to be used as the resulting value should that option be selected. The constructor for an `Item` is given by the following signature. `Item :: Typeable a => Prompt -> a -> Choice a`.
+* Accessors are functions that follow a pattern wherein they can generically arrest values of  a given type from a survey answer when guided by the survey to which the answer corresponds. For example, the simplest accessor in Surveyor is `guidedBy`, which, given a `Survey a` and a value of type `a`, will attempt to extract a value of type `b`. If such an extraction is impossible, it will return `Nothing`. It is given by the following signature. `guidedBy :: Typeable b => Survey a -> a -> Maybe b`
+* Distributions are analytical results demonstrating how values of some type find themselves in a set of answers. They bear the following datatype. `data Dist a b = Dist [(Maybe b, [a])]`.
 
-
-What are the basic objects that are manipulated and used by the DSL? Basic
-objects are those that are not composed out of other objects. 
-
-As a general rule, the fewer basic objects one needs, the better, because the
-resulting DSL design will be more concise and elegant.
-
-The basic objects should be described by a set of Haskell \prog{type} and
-\prog{data} definitions. Use the \prog{program} environment to show code, as
-illustrated below.
-
-\begin{program}
-type Point = (Int,Int)
-\end{program}
-
-Show how (some (parts) of) the examples from Section \ref{sec:examples} will be
-represented by values of the envisioned types.
-
-Also, list current limitations that you expect in a future iterations to overcome.
+These are the basic objects of Surveyor in the sense that they are not strictly composed of simpler objects. However, since one of the focuses of Surveyor is compositionality, this does not paint a representative picture of Surveyor's core. To gain a more complete perspective, we must examine the composition of these objects and how they are defined together with the objects themselves using GADT definitions.
 
 ## Operators and Combinators
 
-Identify operators that either transform objects into one another or
-build more complex objects out of simpler (and ultimately basic) ones.
+### Combinators and GADT Definitions
 
-Depending on what implementation or form of embedding will be chosen,
-operators may be given as constructors of data types or functions.
+In particular, questions and their composition is given by the following GADT definition. Within, the `Respond` and `Choose` constructors, familiar to us from the previous section, are shown where they are defined. Following them, the `Group` constructor is a way of attaching a label to a part of a survey, without changing the type of the survey. Finally, the `:+:` constructor combines two surveys together, and the result is a `Survey` of the pair of the types of the two tributary `Survey`s.
 
-Combinators are higher-order functions that encode control structures of the
-DSL. The function \prog{map} is a combinator that realizes a looping construct
-for lists. The operations of the parser library Parsec are called \emph{parser
-combinators} since parsers themselves are represented as functions.
+    type Prompt = String
+    data Survey a where
+        Respond :: Typeable a => Prompt -> (String->a) -> Survey a
+        Choose :: Typeable a => Prompt -> Choice a -> Survey a
+        Group :: String -> Survey a -> Survey a
+        (:+:) :: Survey b -> Survey c -> Survey (b,c)
 
-The identification of the right set of combinators is a key step in the design
-of the DSL.
+`Choice` expressions are given by the following GADT definition. Within, the `Item` constructor from the previous section is shown where it is defined. Composition of choice expressions is given by the `:|:` and `:||:` constructors, which compose `Choice` expressions of the same, and different types, respectively. The composition of two choices of the same type is results in a choice of that type, however when the types are different, the two types are unified under an `Either` construct. Finally, the `:->:` constructor attaches a sub-survey to a choice expression, meaning, should any choice within that expression be chosen, the sub-survey should be presented, but not otherwise.
 
-With basic objects, operators, and combinators, you should be able to
-demonstrate how the examples from Section \ref{sec:examples} can be
-represented. All limitations encountered here should be classified as either:
+    data Choice a where
+        Item :: Typeable a => Prompt -> a -> Choice a
+        (:|:) :: Choice a -> Choice a -> Choice a
+        (:||:) :: Choice b -> Choice c -> Choice (Either b c)
+        (:->:) :: Typeable b => Choice b -> Survey c -> Choice (b,c)
 
+Distributions can be derived by the composition of an accessor with a set of answers. If we have an accessor function, which, after being guided by some `Survey a`, is of type `a -> Maybe b`, and we have a set of answers to that survey (which would be of type `[a]`) then a distribution of `b` values over those `a` answers can be produced with the `collate` function.
 
-* Temporary
-* Fundamental
+    collate :: Eq b => (a -> Maybe b) -> [a] -> Dist a b
 
-Temporary limitations should be noted in this section and in  Section
-objects as TO DO items for future revisions of the design.
+Cross tabulations are defined by the composition of distributions from the same set of answers. For example, if we determined distributions of different inner-types (`b` and `c`) over answers from the same survey (of type `a`), then we can correlate these types into a `Table b c` using the `crosstab` function.
 
-Fundamental limitations should be reported and listed in detail in Section
+    crosstab :: Eq a => Dist a b -> Dist a c -> Table b c
 
+### Smart Constructors and Operators
 
-## Interpretation and Analyses
+We provide a collection of smart constructors and operators which transform information from common survey scenarios into objects in the core types of the language. The simplest example of such a function is the `text` constructor, which can be used when a free response question is desired, but the text provided by the respondent is to be used as the result (i.e. no parsing). This can be handled by using `id` as the parsing function and packaging it up in the following way.
 
-Provide a precise description of the different outcomes of the DSL in form of
-how DSL programs can be interpreted (or compiled) and (statically or
-dynamically) analyzed. 
+    text :: Prompt -> Survey String
+    text p = Respond p id
+    
+In a similar way, it might be common to desire a choice item which simply uses a prompt `String` as its display text and as its value. This situation is handled by the `prompt` function. `prompts` is provided to give the same behavior for a set of `String`s.
 
-These functions should be given as Haskell function signatures.
+    prompt :: Prompt -> Choice Prompt
+    prompt p = Item p p
+
+    prompts :: [Prompt] -> Choice Prompt
+    prompts = foldr1 (:|:) . map prompt
+    
+Likewise, if a value is an instance of `Show`, then its `String` representation can be used as the display prompt, and its self used as the value for an `Item`.
+
+    showItem :: (Show v, Typeable v) => v -> Choice v
+    showItem v = Item (show v) v
+
+    showItems :: (Show a, Typeable a) => [a] -> Choice a
+    showItems = foldr1 (:|:) . map showItem
+
+We can also provide survey parts, which are common bits of survey which can be freely composed and assembled into full-scale survey scenarios. For example, it is common for surveys to ask participants to answer along a Likert scale. We can provide an ADT for this datatype and a parameterized survey part which, given a `Prompt`, will present a multiple choice question with options from the scale.
+
+    data LikertScale = 
+          StronglyAgree 
+        | Agree 
+        | NeitherNor
+        | Disagree 
+        | StronglyDisagree
+        deriving (Eq, Typeable, Enum, Bounded)
+
+    likert :: Prompt -> Survey LikertScale
+    likert prompt = MultipleChoice prompt $
+            showOption StronglyDisagree
+        :+: showOption Disagree
+        :+: showOption NeitherNor
+        :+: showOption Agree
+        :+: showOption StronglyAgree
+
+## Interpretation
+
+Surveyor provides two execution mechanisms for running surveys against different target media. The `Surveyor.Execute` module exports a function given by the following signature `runSurvey :: Survey a -> IO a`, which, when given a survey of type `a`, produces an `IO` action which results in a value of type `a`. In particular, `runSurvey` creates a command-line interface for the survey which runs in a terminal. The result of this interface is, naturally, a value of the same type as the survey.
+
+Additionally, we the `Surveyor.Happstack` provides a similar function given by `runServer :: Show a => Survey a -> IO [a]` which translates a survey into a website which outputs the survey as HTML and accepts and processes input over HTTP.
 
 ## Cognitive Dimension Evaluation
 
-An assessment of cognitive dimension of your notation, such as closeness of
-mapping, viscosity, hidden dependencies, and others, will help you with the
-re-design of the DSL.
+Surveyor exemplifies the following Cognitive Dimensions.
+
+* The construction of **abstraction** is facilitated by the host language, Haskell. For example: 
+    * Parameterized survey parts like the `likert` function are an abstraction of a common type of question.
+    * In the `showItems` tool, the details of composing several options of the same type and with `Show`able values is abstracted away into a simple interface which makes use of Haskell's list type.
+    * With the `guidedBy` function, the details of extracting values of a certain type from complex and deeply-nested tuple structure is abstracted away with a type-directed algorithm.
+* Important links between surveyor objects cannot be hidden as described in the **Hidden Dependencies** dimension because all relationships need to be explicitly stated in Surveyor. This is, in part, thanks to the aggressively compositional nature of Surveyor expressions, which ensures a kind of referential transparency.
+* **Premature Commitment** can become an issue in Surveyor if the survey-designer specifies type annotations to accompany survey constructions and they become outdated over the course of the survey's evolution. The survey designer must exercise caution and discretion in this regard.
+* Surveyor strives to achieve **Closeness of Mapping** with its simple, unembellished syntax and explicitly specified type composition.
+* The use of strong-typing helps to minimize the effects of the **Error-proneness** dimension.
+* The dimension of **Progressive Evaluation** is supported by the compositional nature of surveyor expressions and the ease of using the execution functions such as `runSurvey`.
 
 ## Implementation Strategy
 
-Discuss how the advantages and disadvantages of a deep or shallow embedding
-play out in your DSL.
+The keys to Surveyor's implementation are GADTs and SYB. GADTs provided a means to closely-connect survey structure to its type as well as provide a simple way to pattern match against constructors while traversing a surveyor expression. SYB provided a framework for the `guidedBy` accessor to generically seek values of arbitrary types, and which acted as a foundation for the analysis part of the language altogether. The Happstack package for Haskell is used in the `Surveyor.Happstack` package to handle the myriad details of a web server.
 
 ## Find Similar/Related DSLs
 
