@@ -161,47 +161,28 @@ The keys to Surveyor's implementation are GADTs and SYB. GADTs provided a means 
 
 ## Find Similar/Related DSLs
 
-Try to find DSLs that are similar to the one described here and compare your
-DSL with those. Note that similarity can be understood as *topical* as
-well as *technical* similarity .
-
-*Topically similar* DSLs are DSLs for the same or a closely related
-domain. They have in principle the same or slightly different outcomes, but
-they may be implemented quite differently. These DSLs help you refine the
-design of the DSL requirements described in Sections users and
-outcomes.
-
-*Technically similar* DSLs are Haskell DSLs whose types and functions are
-similar to the ones used in Sections objects and comb.
-They can help sharpen the DSL modeling and implementation described in those
-sections.
-
-Ideally, you can find both, topically and technically similar DSLs. Be sure to
-properly cite the DSLs as references.
-
-**You will have to present these DSLs in a class presentation.**
+Cunningham published a DSEL in Ruby for representing surveys. Within, surveys are collections of multiple choice questions only. Further, each question can potentially have an expression which indicates whether the question is to be included in the survey. Each option in the question is defined with a closure which destructively assigns values in scope. For example, an option in a multiple choice question might look like `response "Female" { @female = true }`. This closure would be executed should that option be selected. The result of this design is that surveys in this language are not truly compositional because a conflict in the names assigned in the closures of the options will result in loss of data. Similarly, since Ruby is dynamically typed, there is no way to make type guarantees for the data. Cunningham's DSEL is itself based on a DSL by John Bentley, which is a very simple language implemented in BASIC, and which uses database column index numbers for storage in the question definition.
 
 ## Design Evolution
 
-As you iterate over different designs of your DSL, it is quite instructive to
-document some of the old, obsolete designs, that is, show the type definitions
-and function signatures, explain why this design seemed attractive at first
-and then what motivated you to change it.
+The most important change in the design of this language as it evolved was the change of using conventional Haskell ADTs for the language constructors. The code for these ADTs are listed below. In result, it was impossible to achieve the goal of type-safety using approach, so GADTs were used instead.
 
-This part may seem like an unnecessary burden to you, but it helps you and
-others to understand your current design, and it probably answers questions
-that users (or reviewers) of the DSL might have about the design, because they
-may have thought of your initial design also and are wondering why it has not
-been adopted.
+    type Prompt = String
+    data Question = MultipleChoice Prompt [Choice] 
+                  | FreeResponse Prompt
+    data Choice = Choice String
+                | ChoicePlus String Survey
+    data Survey = Pose Question
+                | Survey :-: Survey
+    type Answer = (Prompt, String)
+
+The degree to which the language would concern itself with analysis was not immediately clear, but when the goal of type safety was achieved by swwitching to GADTs, and it was clear how much type information could be preserved in a survey, it became a greater area of focus for the DSL.
 
 ## Future Work
 
-A speculation about what it takes to remove some of the limitations and
-whether it seems worth the effort.
+The clearest next steps would be to improve upon the `Haskell.Happstack` package to be able to handle conditional surveys. It should also use HTML5 validation and be able to store answers and do analytics within the web environment before it could be considered ready to be internet-facing.
 
-Moreover, what would be the concrete benefits to extend a shallow DSL into a
-deep DSL? Or, would it be helpful to create an external DSL? What role could a
-visual syntax or a GUI interface play?
+Another clear course of improvement would be to add to the existing analytics facilities. For example, the types and data storage should be reworked between the `Dist` and `Table` types such that they are really instances of the same type at different dimensionalities. Subsequently, arbitrary dimensionality could be achieved by repeated composions of analytical results.
 
 ## References
 
