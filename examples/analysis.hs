@@ -80,7 +80,7 @@ tabulation = tabGenderDist `crosstab` tabHandednessDist
 
 
 
-
+maleHandedness = dependent (== Just Male) tabGenderDist tabHandednessDist
 
 
 main = print tabulation

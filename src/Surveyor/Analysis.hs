@@ -12,16 +12,20 @@ module Surveyor.Analysis (
 
         collate,
         crosstab,
+        dependent,
 
         Dist (..),
         Table (..)
     ) where
 
-import Surveyor
+import Surveyor hiding (text)
 
 import Data.Maybe
 import Data.List
 import Data.Generics
+
+import Data.List
+import Text.PrettyPrint.Boxes
 
 scan :: (a -> Maybe b) -> [a] -> [b]
 scan f = catMaybes . map f
@@ -100,31 +104,28 @@ collate acc ans = Dist $ do
 
 data Table p np = Table [Maybe p] [Maybe np] [[Int]]
 
+
 instance (Show p, Show np) => Show (Table p np) where
-    show (Table rows cols cells) = concat $ intersperse "\n" $ topRow : rest
+    show (Table rows cols cells) = render $ rowHeaderBox <+> dataBox
         where
             maxWidthOf :: Show a => [a] -> Int
             maxWidthOf = (+1) . maximum . map (length . show)
 
-            widths :: [Int]
-            widths = do
-                n <- [0..(pred $ length cols)]
-                return $ (succ $ length $ showMaybe $ cols !! n) `max` (maxWidthOf $ cells !! n)
+            rowHeaderColumn :: [String]
+            rowHeaderColumn = "" : map showMaybe rows
 
-            rowColumnWidth :: Int
-            rowColumnWidth = maxWidthOf $ map showMaybe rows
+            dataColumns :: [[String]]
+            dataColumns = zipWith (:) (map showMaybe cols) (transpose $ map (map show) cells)
 
-            pad :: Int -> String -> String
-            pad n s = s ++ (take (n - length s) $ repeat ' ')
+            vert = vcat left
+            horiz = hsep 1 left
 
-            topRow :: String
-            topRow = concat $ intersperse " " $ pad (pred rowColumnWidth) "" : map showMaybe cols
+            rowHeaderBox :: Box
+            rowHeaderBox = vert $ map text rowHeaderColumn
 
-            rest :: [String]
-            rest = do
-                n <- [0..(pred $ length rows)]
-                let header = pad rowColumnWidth $ showMaybe $ rows !! n
-                return $ header ++ (concat $ zipWith pad widths $ map show $ cells !! n)
+            dataBox :: Box
+            dataBox = horiz $ map (vert . map text) dataColumns
+
             
 crosstab :: Eq a => Dist a b -> Dist a c -> Table b c
 crosstab (Dist d1) (Dist d2) = Table (map fst d1) (map fst d2) cells
@@ -136,3 +137,14 @@ crosstab (Dist d1) (Dist d2) = Table (map fst d1) (map fst d2) cells
                 return $ 
                     length $ 
                     (snd row) `intersect` (snd col)
+
+dependent :: Eq a => (Maybe b -> Bool) -> Dist a b -> Dist a c -> Table b c
+dependent fn (Dist xs) rh = (Dist $ filter (fn . fst) xs) `crosstab` rh
+
+
+
+
+
+
+
+
