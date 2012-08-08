@@ -1,23 +1,21 @@
+
+
+
 import Surveyor
 import Surveyor.Execute
 import Surveyor.Analysis
+import Surveyor.Happstack
 
 import Data.Maybe
 
-basicQuestions :: 
-    Survey ((FullName, Gender), Handedness)
-basicQuestions = 
-    askName :-: askGender :-: askHandedness
+basicQuestions :: Survey ((FullName, Gender), Handedness)
+basicQuestions = fullName :+: gender :+: handedness
 
-sentimentQuestions :: 
-    Survey (Either Bool (Bool, LikertScale))
-sentimentQuestions = MultipleChoice
-    "Have you bought one of our notebooks?" (
-            Option "No" False
-        :*: OptionPlus 
-            "Yes" True 
-            (likert "The notebook is good.")
-    )
+sentimentQuestions :: Survey (Either Bool (Bool, LikertScale))
+sentimentQuestions = Choose "Have you bought one of our notebooks?" $
+             Item "No" False
+        :||: Item "Yes" True :->: (likert "The notebook is good.")
+    
 
 type CustomerSurveyType = (
         ((FullName, Gender), Handedness), 
@@ -25,8 +23,7 @@ type CustomerSurveyType = (
     )
 
 customerSurvey :: Survey CustomerSurveyType
-customerSurvey = 
-    basicQuestions :-: sentimentQuestions
+customerSurvey = basicQuestions :+: sentimentQuestions
 
 responses :: [CustomerSurveyType]
 responses = [
@@ -57,38 +54,25 @@ responses = [
     ]
 
 genders :: [Gender]
-genders = catMaybes $ map 
-    (genericAccessor customerSurvey)
-    responses
+genders = guidedBy customerSurvey `scan` responses
 
 handednesses :: [Handedness]
-handednesses = catMaybes $ map 
-    (nameAccessor "Handedness" customerSurvey)
-    responses
+handednesses = guidedBy customerSurvey `scan` responses
 
-genderDist :: 
-    Distribution CustomerSurveyType Gender
-genderDist = collate 
-    (genericAccessor customerSurvey)
-    responses
+genderDist :: Dist CustomerSurveyType Gender
+genderDist = guidedBy customerSurvey `collate` responses
 
 
-handednessDist :: 
-    Distribution CustomerSurveyType Handedness
-handednessDist = collate 
-    (genericAccessor customerSurvey)
-    responses
+handednessDist :: Dist CustomerSurveyType Handedness
+handednessDist = guidedBy customerSurvey `collate` responses
 
-likertDist :: 
-    Distribution CustomerSurveyType LikertScale
-likertDist = collate 
-    (genericAccessor customerSurvey)
-    responses
+likertDist :: Dist CustomerSurveyType LikertScale
+likertDist = guidedBy customerSurvey `collate` responses
 
 genderAndHandedness :: Table Gender Handedness
-genderAndHandedness = 
-    genderDist `crosstab` handednessDist
+genderAndHandedness = genderDist `crosstab` handednessDist
 
 handednessAndLikert :: Table LikertScale Handedness
-handednessAndLikert = 
-    likertDist `crosstab` handednessDist
+handednessAndLikert = likertDist `crosstab` handednessDist
+
+main = runServer customerSurvey

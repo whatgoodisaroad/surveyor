@@ -1,7 +1,7 @@
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
 -- Surveyor.Analysis
 -- Wyatt Allen
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
 
 {-#LANGUAGE GADTs #-}
 
@@ -34,8 +34,8 @@ scan f = catMaybes . map f
 -- The result is a function which returns a maybe.
 -- The maybe is because the survey might not involve the target type at all,
 -- or because the answer may be formed in such a way that the target 
--- type would not be present, for example if the type would only be present in the
--- untaken branch of an Either construction.
+-- type would not be present, for example if the type would only be present in 
+-- the untaken branch of an Either construction.
 guidedBy :: Typeable b => Survey a -> a -> Maybe b
 guidedBy (Respond _ fn) = cast
 guidedBy (Choose _ c) = choiceGuidedBy c
@@ -140,11 +140,3 @@ crosstab (Dist d1) (Dist d2) = Table (map fst d1) (map fst d2) cells
 
 dependent :: Eq a => (Maybe b -> Bool) -> Dist a b -> Dist a c -> Table b c
 dependent fn (Dist xs) rh = (Dist $ filter (fn . fst) xs) `crosstab` rh
-
-
-
-
-
-
-
-

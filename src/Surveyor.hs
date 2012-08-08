@@ -18,7 +18,7 @@ module Surveyor (
         -- Smart Constructors
         text,
         
-        prompt, prompted,
+        prompt, prompted, prompts, 
         
         showItem, vdep, showItems,
         
@@ -70,6 +70,8 @@ data Choice a where
     (:||:) :: Choice b -> Choice c -> Choice (Either b c)
     (:->:) :: Typeable b => Choice b -> Survey c -> Choice (b,c)
 
+infixl 3 :|:
+infixl 2 :||:
 
 -- Smart constructors
 
