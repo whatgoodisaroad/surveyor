@@ -99,50 +99,31 @@ runServer survey = server >> return []
         surveyHtml = subdoc $ toHtml' survey
 
         server = simpleHTTP nullConf $ msum [ 
-                dir "ans" $ handleAnswer' survey,
+                dir "ans" $ handleAnswer survey,
                 ok surveyHtml 
             ]
 
+
+
+
+
 handleAnswer :: Show a => Survey a -> ServerPart Html
 handleAnswer survey = do
-    ans <- decodeSurvey "-" survey
-
-    let name = "Anonymous" `fromMaybe` (("First name" `searchingFor` survey) ans)
-    
-    let html = (
-                (enclose "h1" [] "Submitted") 
-            ++  (enclose "h2" [] $ "Thanks, " ++ name ++ "!") 
-            ++  (enclose "pre" [] $ show ans) 
-            ++  (enclose "a" [("href", "/")] "Again"))
-    
-    ok $ doc html
-
-
-
-
-
-
-
-handleAnswer' :: Show a => Survey a -> ServerPart Html
-handleAnswer' survey = do
     allPairs <- getHeaderPairs
 
-    let eans = decodeSurvey' allPairs "-" survey
+    let eans = decodeSurvey allPairs "-" survey
 
     case eans of
         Right ans -> sendSuccess ("Anonymous" `fromMaybe` (("First name" `searchingFor` survey) ans)) (show ans)
         Left next -> ok $ next
 
 sendSuccess :: String -> String -> ServerPart Html
-sendSuccess name ans = do
-    let html = (
-                (enclose "h1" [] "Submitted") 
-            ++  (enclose "h2" [] $ "Thanks, " ++ name ++ "!") 
-            ++  (enclose "pre" [] $ ans) 
-            ++  (enclose "a" [("href", "/")] "Again"))
+sendSuccess name ans = ok $ doc $ hwrite $ do
+    hheader 1 "Submitted";
+    hheader 2 $ "Thanks, " ++ name ++ "!";
+    htag "pre" [] $ htext ans;
+    htag "a" [("href", "/")] $ htext "Again";
     
-    ok $ doc html
-
 
 
 
@@ -175,28 +156,37 @@ headerPairsToHiddens [] = ""
 headerPairsToHiddens ((k, v):ps) = shidden k v ++ headerPairsToHiddens ps
 
 
+type Path = String
 
 
 
 
 
-decodeSurvey' :: [(String, String)] -> Path -> Survey a -> Either Html a
 
-decodeSurvey' pairs path (left :+: right) = do
-    dl <- decodeSurvey' pairs (path ++ "l") left
-    dr <- decodeSurvey' pairs (path ++ "r") right
+decodeSurvey :: 
+    [(String, String)] -> Path -> Survey a -> 
+    Either Html a
+
+decodeSurvey pairs path (left :+: right) = do
+    dl <- decodeSurvey pairs (path ++ "l") left
+    dr <- decodeSurvey pairs (path ++ "r") right
     return (dl, dr)
 
-decodeSurvey' pairs path (Group name sub) = decodeSurvey' pairs (path ++ "g") sub
+decodeSurvey pairs path (Group name sub) = decodeSurvey pairs (path ++ "g") sub
 
-decodeSurvey' pairs path s@(Respond _ p) = do
-    let mval = path `lookup` pairs
-    case mval of 
-        (Just val)  -> return $ p val
-        Nothing     -> Left $ subdoc $ toHtmlP path s ++ headerPairsToHiddens pairs
+decodeSurvey pairs path s@(Respond _ p) = case mval of 
+    (Just val)  -> return $ p val
+    Nothing     -> Left $ subdoc $ toHtmlP path s ++ headerPairsToHiddens pairs
+    where
+        mval = (path `lookup` pairs) >>= atLeastOneChar
 
-decodeSurvey' pairs path s@(Choose prompt choices) = case mval of
-    Just idx    -> return $ selected idx choices
+        atLeastOneChar :: String -> Maybe String
+        atLeastOneChar [] = Nothing
+        atLeastOneChar s = Just s
+
+
+decodeSurvey pairs path s@(Choose prompt choices) = case mval of
+    Just idx    -> narrowSelection pairs path idx choices
     Nothing     -> dfail
     where
         dfail = Left $ subdoc $ toHtmlP path s ++ headerPairsToHiddens pairs
@@ -226,47 +216,32 @@ decodeSurvey' pairs path s@(Choose prompt choices) = case mval of
 
 
 
+narrowSelection :: 
+    [(String, String)] -> Path -> Int -> Choice a -> 
+    Either Html a
+
+narrowSelection pairs path idx (l :|: r)
+    | idx < llen    = narrowSelection pairs path idx l
+    | otherwise     = narrowSelection pairs path (idx - llen) r
+    where llen      = choiceLength l
+narrowSelection pairs path idx (l :||: r)
+    | idx < llen    = Left  <$> narrowSelection pairs path idx l
+    | otherwise     = Right <$> narrowSelection pairs path (idx - llen) r
+    where llen      = choiceLength l    
+narrowSelection pairs path idx (choice :->: sub) = do
+    sval            <- decodeSurvey pairs (path ++ "s") sub
+    cval            <- narrowSelection pairs path idx choice
+    return          (cval, sval)
+narrowSelection pairs path 0 (Item _ val) = return val
 
 
 
-decodeSurvey :: Path -> Survey a -> ServerPart a
-decodeSurvey path (left :+: right) = do
-    dl <- decodeSurvey (path ++ "l") left
-    dr <- decodeSurvey (path ++ "r") right
-    return (dl, dr)
-decodeSurvey path (Group name subsurvey) = decodeSurvey (path ++ "g") subsurvey
-decodeSurvey path (Respond _ p) = do
-    val <- look path
-    return $ p val
-decodeSurvey path (Choose prompt choices) = do
-    idx <- (read :: String -> Int) <$> look path
-    return $ selected idx choices
 
-enclose :: String -> [(String, String)] -> String -> String
-enclose tag attrs "" = "<" ++ tag ++ (renderAttrs attrs) ++  "/>"
-enclose tag attrs content = 
-    "<" ++ tag ++ (renderAttrs attrs) ++ ">" ++ 
-    content ++ 
-    "</" ++ tag ++ ">"
 
-renderAttrs :: [(String, String)] -> String
-renderAttrs [] = ""
-renderAttrs ((n, v):as) = " " ++ n ++ "='" ++ v ++ "'" ++ renderAttrs as
 
-type Path = String
 
-selected :: Int -> Choice a -> a
 
-selected 0 (Item _ val) = val
 
-selected n (l :|: r)
-    | n < llen  = selected n l
-    | otherwise = selected (n - llen) r
-    where llen = choiceLength l
-selected n (l :||: r)
-    | n < llen = Left $ selected n l
-    | otherwise = Right $ selected (n-llen) r
-    where llen = choiceLength l
 
 
 
@@ -284,7 +259,7 @@ htext = tell
 
 renderAttributes :: [HyperAttr] -> String
 renderAttributes [] = ""
-renderAttributes ((n, v):as) = concat [ " ", n, "='", v, "'" ] ++ renderAttrs as
+renderAttributes ((n, v):as) = concat [ " ", n, "='", v, "'" ] ++ renderAttributes as
 
 htag :: String -> [HyperAttr] -> HyperGen -> HyperGen
 htag name as sub
@@ -312,13 +287,14 @@ hblank name = htag "input" [("type", "text"), ("id", name), ("name", name)] hemp
 hradio :: String -> Int -> HyperGen
 hradio name idx = htag "input" [("type", "radio"), ("value", show idx), ("name", name), ("id", name ++ show idx)] hempty
 
-
+hheader :: Int -> String -> HyperGen
+hheader n s = htag ('h' : show n) [] $ htext s
 
 shidden :: String -> String -> String
 shidden key value = 
         snd 
     $   runWriter 
-    $   htag "input" [("id", key), ("name", key), ("value", value), ("type", "hidden")] hempty
+    $   htag "input" [("name", key), ("value", value), ("type", "hidden")] hempty
 
 
 
@@ -328,6 +304,9 @@ toHtml' = toHtmlP "-"
 
 toHtmlP :: String -> Survey a -> String
 toHtmlP path = snd . runWriter . writeHtml path
+
+hwrite :: HyperGen -> String
+hwrite = snd . runWriter
 
 
 writeHtml :: Path -> Survey a -> HyperGen
@@ -358,7 +337,7 @@ hChoices path idx (left :||: right) = do
     hChoices path idx left
     hChoices path (idx + choiceLength left) right
 
-hChoices path idx (Item prompt value) = do
+hChoices path idx (Item prompt value) = hdiv "choice" $ do
     hradio path idx
     htag "label" [("for", path ++ show idx)] $ htext prompt
 
